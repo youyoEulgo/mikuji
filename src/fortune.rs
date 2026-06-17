@@ -3,8 +3,6 @@ use chrono::NaiveDate;
 use rand::prelude::*;
 use rand::rngs::StdRng;
 
-const FORTUNE_JSON: &str = include_str!("../output/data.json");
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct FortuneEntry {
     pub name: String,
@@ -28,8 +26,12 @@ pub struct ParsedFortune {
     pub source: FortuneEntry,
 }
 
-pub fn load_fortunes() -> serde_json::Result<Vec<FortuneEntry>> {
-    serde_json::from_str(FORTUNE_JSON)
+pub fn load_fortunes() -> Result<Vec<FortuneEntry>, String> {
+    let path = crate::paths::data_dir().join("data.json");
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("无法读取数据文件 {}: {}", path.display(), e))?;
+    serde_json::from_str(&content)
+        .map_err(|e| format!("解析数据文件失败: {}", e))
 }
 
 pub fn pick_by_date(entries: &[FortuneEntry], date: NaiveDate) -> ParsedFortune {
