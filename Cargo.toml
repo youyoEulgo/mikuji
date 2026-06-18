@@ -3,6 +3,10 @@ name = "mikuji"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+force-sixel = []  # Windows Terminal 用户编译时指定
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png"] }

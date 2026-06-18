@@ -5,7 +5,9 @@ mod paths;
 
 use chrono::Local;
 use clap::Parser;
-use fortune::{FortuneEntry, load_fortunes, pick_by_date, pick_by_name, pick_by_number, pick_random};
+use fortune::{
+    FortuneEntry, load_fortunes, pick_by_date, pick_by_name, pick_by_number, pick_random,
+};
 use std::io::{self, Write};
 
 fn main() {
@@ -16,7 +18,9 @@ fn main() {
 }
 
 // 图片显示宽度（列数）。直接改这个数即可。
-const IMAGE_WIDTH: u16 = 55;
+const IMAGE_WIDTH: u16 = 100;
+// 左侧偏移（列数）- 让图片不紧贴左边缘
+const LEFT_MARGIN: u16 = 1;
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = cli::Cli::parse();
@@ -56,9 +60,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         (180, 24)
     };
 
-    // 图片宽度：取 IMAGE_WIDTH 和终端宽度 1/4 的较小值
+    // 图片宽度：取 IMAGE_WIDTH 和终端宽度 1/3 的较小值
     let img_cells = IMAGE_WIDTH.min(tw / 3);
-    let text_col = img_cells + 3;
+    let text_col = LEFT_MARGIN + img_cells + 3;
     let text_max_w = tw.saturating_sub(text_col);
 
     // 先加载图片并测量尺寸
@@ -95,19 +99,23 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(ref png) = png_bytes {
         match image::detect_protocol() {
             Some(image::Protocol::Kitty) => {
+                // Kitty: 先移动到左边距列
+                write!(out, "\x1b[{}G", LEFT_MARGIN)?;
                 image::kitty_emit(png, img_cells, img_h)?;
             }
             Some(image::Protocol::Sixel) => {
-                write!(out, "\x1b7")?; // 保存光标位置
+                // Sixel: 移动到左边距列，输出图片（背景透明）
+                write!(out, "\x1b[{}G", LEFT_MARGIN)?;
                 image::sixel_emit(png, img_cells, img_h)?;
-                write!(out, "\x1b8")?; // 恢复光标位置
+                // Sixel 输出后光标在图片底部，需要向上移动到顶部
+                write!(out, "\x1b[{}A", img_h)?;
             }
             None => {} // 不显示图片
         }
     }
 
     // ── 3. 输出文字 ──
-    // 图片显示后光标在左上角（C=1），每行文字先定位到 text_col 列再写
+    // 图片显示后光标在左上角，每行文字先定位到 text_col 列再写
     for (row, line) in wrapped_lines.iter().enumerate() {
         if row > 0 {
             writeln!(out)?;
