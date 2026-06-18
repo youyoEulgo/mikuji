@@ -5,7 +5,7 @@ mod paths;
 
 use chrono::Local;
 use clap::Parser;
-use fortune::{FortuneEntry, load_fortunes, pick_by_date, pick_by_name};
+use fortune::{FortuneEntry, load_fortunes, pick_by_date, pick_by_name, pick_by_number, pick_random};
 use std::io::{self, Write};
 
 fn main() {
@@ -34,6 +34,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     let fortune = if let Some(n) = &cli.name {
         pick_by_name(&entries, n).ok_or_else(|| format!("not found: {n}"))?
+    } else if let Some(num) = cli.number {
+        pick_by_number(&entries, num).ok_or_else(|| format!("签号 {num} 不存在"))?
+    } else if cli.random {
+        pick_random(&entries)
     } else {
         let d = if let Some(d) = &cli.date {
             chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")?
@@ -251,64 +255,60 @@ fn build_text(f: &FortuneEntry, lang: Lang) -> Vec<String> {
         Lang::Jp => &f.jp_text,
     };
 
-    // 基础字段（两种语言结构相同，索引一致）
-    let number = &raw[1];
-    let luck = &raw[3];
-    let title = &raw[4];
-    let name = &raw[5];
-    let ability = &raw[6];
+    // 按 | 拆块: header | identity | poem | fortunes | comment | artist
+    let blocks: Vec<&[String]> = raw.split(|s| s == "|").collect();
+    let header = blocks.first().copied().unwrap_or(&[]);
+    let identity = blocks.get(1).copied().unwrap_or(&[]);
+    let poem_block = blocks.get(2).copied().unwrap_or(&[]);
+    let fortune_block = blocks.get(3).copied().unwrap_or(&[]);
+    let comment_block = blocks.get(4).copied().unwrap_or(&[]);
+    let artist_block = blocks.get(5).copied().unwrap_or(&[]);
 
-    // 诗歌 / 运势：raw[7..] 中 [ 之前是诗歌+运势，[ 之后是评论
-    let bracket_pos = raw[7..].iter().position(|line| line == "[");
-    let (poem, fortunes): (Vec<String>, Vec<String>) = match bracket_pos {
-        Some(pos) => fortune::split_poem_and_fortunes(&raw[7..7 + pos]),
-        None => fortune::split_poem_and_fortunes(&raw[7..]),
+    // 签号块：第, N, 号/番, 吉凶1, [吉凶2]
+    let number = header.get(1).map(|s| s.as_str()).unwrap_or("");
+    let luck1 = header.get(3).map(|s| s.as_str()).unwrap_or("");
+    let luck2 = header.get(4).map(|s| s.as_str()).unwrap_or("");
+
+    // 有第二个吉凶 → 第一个划掉
+    let (luck_strike, luck_real) = if !luck2.is_empty() {
+        (luck1, luck2)
+    } else {
+        ("", luck1)
     };
+    let lc = luck_color(luck_real);
 
-    // 评论：'[' '评论' ']上海...' 之后到末尾（不含可能的画师行）
-    let comment: Vec<String> = match bracket_pos {
-        Some(pos) => {
-            let comment_start = 7 + pos + 3;
-            let mut comment_end = raw.len();
-            // 最后一行如果是 "本页画师：…" 则不算在评论里
-            if matches!(lang, Lang::Cn) && raw.last().map_or(false, |s| s.starts_with("本页画师："))
-            {
-                comment_end = comment_end.saturating_sub(1);
-            }
-            raw[comment_start.min(comment_end)..comment_end]
-                .iter()
-                .map(|s| s.to_string())
-                .collect()
-        }
-        None => Vec::new(),
-    };
+    // 身份块：标题, 角色名, 能力
+    let title = identity.first().map(|s| s.as_str()).unwrap_or("");
+    let name = identity.get(1).map(|s| s.as_str()).unwrap_or("");
+    let ability = identity.get(2).map(|s| s.as_str()).unwrap_or("");
 
-    // 画师（仅中文）
-    let artist = match lang {
-        Lang::Cn if raw.last().map_or(false, |s| s.starts_with("本页画师：")) => {
-            raw.last().unwrap().clone()
-        }
-        _ => String::new(),
-    };
+    // 诗歌、运势已由 | 分隔
+    let poem: Vec<String> = poem_block.iter().map(|s| s.clone()).collect();
+    let fortunes: Vec<String> = fortune_block.iter().map(|s| s.clone()).collect();
 
-    let lc = luck_color(luck);
+    // 评论块：首行来源，余行内容
+    let comment_source = comment_block.first().map(|s| s.as_str()).unwrap_or("");
+    let comment: Vec<String> = comment_block.iter().skip(1).map(|s| s.clone()).collect();
+
+    // 画师
+    let artist = artist_block.first().map(|s| s.as_str()).unwrap_or("");
 
     let num = match lang {
         Lang::Cn => format!("第 {} 号", number),
         Lang::Jp => format!("第 {} 番", number),
     };
 
-    // 评论来源：'[' '评论' ']来源名' 中的来源名
-    let comment_source = match bracket_pos {
-        Some(pos) => raw
-            .get(7 + pos + 2)
-            .map(|s| s.trim_start_matches(']'))
-            .unwrap_or(""),
-        None => "",
-    };
-
     let mut v = Vec::new();
-    v.push(format!("{w}{num}  {lc}{bld}【{}】{rst}", luck));
+
+    // 吉凶行：划掉项 → 灰色删除线 + 彩色真实值
+    if !luck_strike.is_empty() {
+        v.push(format!(
+            "{w}{num}  \x1b[90m\x1b[9m{luck_strike}{rst}  {lc}{bld}【{luck_real}】{rst}"
+        ));
+    } else {
+        v.push(format!("{w}{num}  {lc}{bld}【{luck_real}】{rst}"));
+    }
+
     v.push(format!("{c}{title}{rst}"));
     v.push(format!("{y}{bld}{name}{rst}"));
     v.push(format!("{w}{ability}{rst}"));

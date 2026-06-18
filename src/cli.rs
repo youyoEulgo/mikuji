@@ -11,7 +11,9 @@ use clap::Parser;
     about = "东方主题每日御神签",
     after_help = "示例:
   mikuji                 按当天日期抽取
+  mikuji -r              真随机抽取
   mikuji --name 博丽灵梦   指定角色
+  mikuji --number 84      指定签号
   mikuji --date 2026-02-18 指定日期
   mikuji --lang ja         日文模式
   mikuji --list            列出所有角色
@@ -37,6 +39,14 @@ pub struct Cli {
     /// 列出所有角色
     #[arg(long)]
     pub list: bool,
+
+    /// 指定签号
+    #[arg(short = 'N', long)]
+    pub number: Option<u16>,
+
+    /// 随机抽取（不依赖日期种子）
+    #[arg(short, long)]
+    pub random: bool,
 
     /// 手动指定终端宽度（列数）
     #[arg(short, long)]

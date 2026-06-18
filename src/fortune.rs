@@ -27,23 +27,18 @@ pub fn pick_by_date(entries: &[FortuneEntry], date: NaiveDate) -> FortuneEntry {
     entries[rng.gen_range(0..entries.len())].clone()
 }
 
+pub fn pick_random(entries: &[FortuneEntry]) -> FortuneEntry {
+    let mut rng: StdRng = SeedableRng::from_entropy();
+    entries[rng.gen_range(0..entries.len())].clone()
+}
+
 pub fn pick_by_name(entries: &[FortuneEntry], name: &str) -> Option<FortuneEntry> {
     entries.iter().find(|e| e.name == name).cloned()
 }
 
-/// 将 raw[7..][..pos] 诗歌+运势区拆分为 (诗歌, 运势)。含 `：` 或 `:` 的行视为运势。
-pub(crate) fn split_poem_and_fortunes(lines: &[String]) -> (Vec<String>, Vec<String>) {
-    let mut poem = Vec::new();
-    let mut fortunes = Vec::new();
-    for line in lines {
-        if line.trim().is_empty() { continue; }
-        if line.contains('：') || line.contains(':') {
-            fortunes.push(line.to_string());
-        } else {
-            poem.push(line.to_string());
-        }
-    }
-    (poem, fortunes)
+pub fn pick_by_number(entries: &[FortuneEntry], num: u16) -> Option<FortuneEntry> {
+    let target = num.to_string();
+    entries.iter().find(|e| e.cn_text.get(1).map(|s| s.as_str()) == Some(&target)).cloned()
 }
 
 #[cfg(test)]
