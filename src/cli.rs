@@ -10,7 +10,7 @@ use clap::Parser;
     version,
     about = "东方主题每日御神签",
     after_help = "示例:
-  mikuji                 按当天日期抽取
+  mikuji                 按当天日期抽取（同一人同一天结果固定，不同人不同）
   mikuji -r              真随机抽取
   mikuji --name 博丽灵梦   指定角色
   mikuji --number 84      指定签号

@@ -22,9 +22,18 @@ pub fn pick_by_date(entries: &[FortuneEntry], date: NaiveDate) -> FortuneEntry {
     let y = date.format("%Y").to_string().parse::<u64>().unwrap_or(2026);
     let m = date.format("%m").to_string().parse::<u64>().unwrap_or(1);
     let d = date.format("%d").to_string().parse::<u64>().unwrap_or(1);
-    let seed = y * 10000 + m * 100 + d;
+    let date_seed = y * 10000 + m * 100 + d;
+    let seed = date_seed ^ user_seed();
     let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
     entries[rng.gen_range(0..entries.len())].clone()
+}
+
+/// 编译时生成的用户种子。同一个人同一天结果固定，不同人不同。
+fn user_seed() -> u64 {
+    include_str!(concat!(env!("OUT_DIR"), "/user_seed.txt"))
+        .trim()
+        .parse()
+        .unwrap_or(2026)
 }
 
 pub fn pick_random(entries: &[FortuneEntry]) -> FortuneEntry {
