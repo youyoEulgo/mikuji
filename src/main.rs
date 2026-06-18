@@ -93,7 +93,17 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── 2. 发射图片 ──
     if let Some(ref png) = png_bytes {
-        image::kitty_emit(png, img_cells, img_h)?;
+        match image::detect_protocol() {
+            Some(image::Protocol::Kitty) => {
+                image::kitty_emit(png, img_cells, img_h)?;
+            }
+            Some(image::Protocol::Sixel) => {
+                write!(out, "\x1b7")?; // 保存光标位置
+                image::sixel_emit(png, img_cells, img_h)?;
+                write!(out, "\x1b8")?; // 恢复光标位置
+            }
+            None => {} // 不显示图片
+        }
     }
 
     // ── 3. 输出文字 ──
