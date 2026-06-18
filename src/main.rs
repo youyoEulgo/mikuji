@@ -5,7 +5,7 @@ mod paths;
 
 use chrono::Local;
 use clap::Parser;
-use fortune::{ParsedFortune, load_fortunes, pick_by_date, pick_by_name};
+use fortune::{FortuneEntry, load_fortunes, pick_by_date, pick_by_name};
 use std::io::{self, Write};
 
 fn main() {
@@ -118,6 +118,71 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn luck_color(luck: &str) -> &'static str {
+    let has = |s: &str| luck.contains(s);
+
+    // 混合型（吉凶并存）→ 紫
+    if (has("大吉") || luck == "吉") && (has("大凶") || has("最凶"))
+        || has("大凶") && (has("部分") || has("一部"))
+    {
+        return "\x1b[35m";
+    }
+
+    // 大吉系 → 红
+    if has("大吉")
+        || has("超大吉")
+        || has("最大吉")
+        || has("大大吉")
+        || has("大々吉")
+        || luck == "吉"
+        || has("奇迹")
+        || has("ミラクル")
+    {
+        return "\x1b[31m";
+    }
+
+    // 中吉/小吉 → 亮红
+    if has("中吉") || has("小吉") || has("小小吉") || has("小々吉") {
+        return "\x1b[91m";
+    }
+
+    // 末吉/半吉 → 黄
+    if has("末吉") || has("半吉") {
+        return "\x1b[33m";
+    }
+
+    // 平/吉凶中间型 → 白（必须在泛凶之前）
+    if has("平")
+        || has("吉凶")
+        || has("吉か凶")
+        || has("吉或凶")
+        || has("吉と凶")
+        || has("自行决定")
+        || has("自分次第")
+    {
+        return "\x1b[37m";
+    }
+
+    // 大凶/最凶系 → 灰
+    if has("大凶")
+        || has("超大凶")
+        || has("最凶")
+        || has("大大凶")
+        || has("大々凶")
+        || has("凶猛")
+        || has("末大凶")
+    {
+        return "\x1b[90m";
+    }
+
+    // 小凶/末凶/泛凶 → 蓝
+    if has("凶") || has("小凶") || has("小小凶") || has("小々凶") || has("末凶") {
+        return "\x1b[34m";
+    }
+
+    "\x1b[35m" // 不明 / 乱 / 无 / 無 → 紫
+}
+
 // ── helpers ───────────────────────────────────────────
 
 enum Lang {
@@ -172,76 +237,102 @@ fn wrap_line(s: &str, max_display_width: usize) -> Vec<String> {
     lines
 }
 
-fn build_text(f: &ParsedFortune, lang: Lang) -> Vec<String> {
+fn build_text(f: &FortuneEntry, lang: Lang) -> Vec<String> {
     let w = "\x1b[37m";
     let c = "\x1b[36m";
     let y = "\x1b[33m";
     let g = "\x1b[32m";
     let d = "\x1b[90m";
-    let r = "\x1b[31m";
-    let br = "\x1b[91m";
-    let bl = "\x1b[34m";
-    let m = "\x1b[35m";
     let bld = "\x1b[1m";
     let it = "\x1b[3m";
     let rst = "\x1b[0m";
+    let raw = match lang {
+        Lang::Cn => &f.cn_text,
+        Lang::Jp => &f.jp_text,
+    };
 
-    let lc = match f.luck.as_str() {
-        "大吉" | "【大大吉】" | "大大吉" | "吉" | "末大吉" => r,
-        "中吉" | "小吉" => br,
-        "末吉" | "半吉" => y,
-        "凶" | "末凶" | "小小凶" | "小々凶" => bl,
-        "大凶" | "末大凶" | "【大大凶】" | "【最凶】" => d,
-        "平" | "吉凶未卜" | "吉凶分界线" => w,
-        _ => m,
+    // 基础字段（两种语言结构相同，索引一致）
+    let number = &raw[1];
+    let luck = &raw[3];
+    let title = &raw[4];
+    let name = &raw[5];
+    let ability = &raw[6];
+
+    // 诗歌 / 运势：raw[7..] 中 [ 之前是诗歌+运势，[ 之后是评论
+    let bracket_pos = raw[7..].iter().position(|line| line == "[");
+    let (poem, fortunes): (Vec<String>, Vec<String>) = match bracket_pos {
+        Some(pos) => fortune::split_poem_and_fortunes(&raw[7..7 + pos]),
+        None => fortune::split_poem_and_fortunes(&raw[7..]),
     };
+
+    // 评论：'[' '评论' ']上海...' 之后到末尾（不含可能的画师行）
+    let comment: Vec<String> = match bracket_pos {
+        Some(pos) => {
+            let comment_start = 7 + pos + 3;
+            let mut comment_end = raw.len();
+            // 最后一行如果是 "本页画师：…" 则不算在评论里
+            if matches!(lang, Lang::Cn) && raw.last().map_or(false, |s| s.starts_with("本页画师："))
+            {
+                comment_end = comment_end.saturating_sub(1);
+            }
+            raw[comment_start.min(comment_end)..comment_end]
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        }
+        None => Vec::new(),
+    };
+
+    // 画师（仅中文）
+    let artist = match lang {
+        Lang::Cn if raw.last().map_or(false, |s| s.starts_with("本页画师：")) => {
+            raw.last().unwrap().clone()
+        }
+        _ => String::new(),
+    };
+
+    let lc = luck_color(luck);
+
     let num = match lang {
-        Lang::Cn => format!("第 {} 号", f.number),
-        Lang::Jp => format!("第 {} 番", f.number),
+        Lang::Cn => format!("第 {} 号", number),
+        Lang::Jp => format!("第 {} 番", number),
     };
-    let ti = match lang {
-        Lang::Cn => f.title.clone(),
-        Lang::Jp => f.source.jp_text.get(4).cloned().unwrap_or_default(),
-    };
-    let nm = match lang {
-        Lang::Cn => f.name.clone(),
-        Lang::Jp => f.source.jp_text.get(5).cloned().unwrap_or_default(),
-    };
-    let ab = match lang {
-        Lang::Cn => f.ability.clone(),
-        Lang::Jp => f.source.jp_text.get(6).cloned().unwrap_or_default(),
+
+    // 评论来源：'[' '评论' ']来源名' 中的来源名
+    let comment_source = match bracket_pos {
+        Some(pos) => raw
+            .get(7 + pos + 2)
+            .map(|s| s.trim_start_matches(']'))
+            .unwrap_or(""),
+        None => "",
     };
 
     let mut v = Vec::new();
-    v.push(format!("{w}{num}  {lc}{bld}【{}】{rst}", f.luck));
-    v.push(format!("{c}{ti}{rst}"));
-    v.push(format!("{y}{bld}{nm}{rst}"));
-    v.push(format!("{w}{ab}{rst}"));
+    v.push(format!("{w}{num}  {lc}{bld}【{}】{rst}", luck));
+    v.push(format!("{c}{title}{rst}"));
+    v.push(format!("{y}{bld}{name}{rst}"));
+    v.push(format!("{w}{ability}{rst}"));
     v.push(String::new());
     v.push(format!("{d}──{rst}"));
-    for l in &f.poem {
+    for l in &poem {
         v.push(format!("  {w}{it}{l}{rst}"));
     }
-    if !f.poem.is_empty() && !f.fortunes.is_empty() {
+    if !poem.is_empty() && !fortunes.is_empty() {
         v.push(String::new());
     }
-    for l in &f.fortunes {
+    for l in &fortunes {
         v.push(format!("  {g}{l}{rst}"));
     }
-    if matches!(lang, Lang::Cn) && !f.comment.is_empty() {
+    if !comment.is_empty() {
         v.push(String::new());
-        v.push(format!("  {d}── ZUN 评论 ──{rst}"));
-        for l in &f.comment {
+        v.push(format!("  {d}── {comment_source} 评论 ──{rst}"));
+        for l in &comment {
             v.push(format!("  {d}{l}{rst}"));
         }
     }
     v.push(String::new());
-    let ar = match lang {
-        Lang::Cn => f.artist.clone(),
-        Lang::Jp => String::new(),
-    };
-    if !ar.is_empty() {
-        v.push(format!("{d}{it}{ar}{rst}"));
+    if !artist.is_empty() {
+        v.push(format!("{d}{it}{artist}{rst}"));
     }
     v
 }

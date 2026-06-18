@@ -6,24 +6,8 @@ use rand::rngs::StdRng;
 #[derive(Debug, Clone, Deserialize)]
 pub struct FortuneEntry {
     pub name: String,
-    #[allow(dead_code)]
-    pub img_url: String,
     pub cn_text: Vec<String>,
     pub jp_text: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ParsedFortune {
-    pub number: String,
-    pub luck: String,
-    pub title: String,
-    pub name: String,
-    pub ability: String,
-    pub poem: Vec<String>,
-    pub fortunes: Vec<String>,
-    pub comment: Vec<String>,
-    pub artist: String,
-    pub source: FortuneEntry,
 }
 
 pub fn load_fortunes() -> Result<Vec<FortuneEntry>, String> {
@@ -34,58 +18,21 @@ pub fn load_fortunes() -> Result<Vec<FortuneEntry>, String> {
         .map_err(|e| format!("解析数据文件失败: {}", e))
 }
 
-pub fn pick_by_date(entries: &[FortuneEntry], date: NaiveDate) -> ParsedFortune {
+pub fn pick_by_date(entries: &[FortuneEntry], date: NaiveDate) -> FortuneEntry {
     let y = date.format("%Y").to_string().parse::<u64>().unwrap_or(2026);
     let m = date.format("%m").to_string().parse::<u64>().unwrap_or(1);
     let d = date.format("%d").to_string().parse::<u64>().unwrap_or(1);
     let seed = y * 10000 + m * 100 + d;
     let mut rng: StdRng = SeedableRng::seed_from_u64(seed);
-    parse_fortune(&entries[rng.gen_range(0..entries.len())])
+    entries[rng.gen_range(0..entries.len())].clone()
 }
 
-pub fn pick_by_name(entries: &[FortuneEntry], name: &str) -> Option<ParsedFortune> {
-    entries.iter().find(|e| e.name == name).map(parse_fortune)
+pub fn pick_by_name(entries: &[FortuneEntry], name: &str) -> Option<FortuneEntry> {
+    entries.iter().find(|e| e.name == name).cloned()
 }
 
-fn parse_fortune(entry: &FortuneEntry) -> ParsedFortune {
-    let bracket_pos = entry.cn_text[7..].iter().position(|line| line == "[");
-
-    let (poem, fortunes, comment, artist) = match bracket_pos {
-        Some(pos) => {
-            let content = &entry.cn_text[7..7 + pos];
-            let (p, f) = split_poem_and_fortunes(content);
-            let text_len = entry.cn_text.len();
-            let comment_end = text_len.saturating_sub(1);
-            let comment_body_start = (7 + pos + 3).min(comment_end);
-            let comment_lines: Vec<String> = if comment_body_start < comment_end {
-                entry.cn_text[comment_body_start..comment_end].to_vec()
-            } else {
-                vec![]
-            };
-            let artist = entry.cn_text.last().cloned().unwrap_or_default();
-            (p, f, comment_lines, artist)
-        }
-        None => {
-            let (p, f) = split_poem_and_fortunes(&entry.cn_text[7..]);
-            (p, f, vec![], String::new())
-        }
-    };
-
-    ParsedFortune {
-        number: entry.cn_text[1].clone(),
-        luck: entry.cn_text[3].clone(),
-        title: entry.cn_text[4].clone(),
-        name: entry.cn_text[5].clone(),
-        ability: entry.cn_text[6].clone(),
-        poem,
-        fortunes,
-        comment,
-        artist,
-        source: entry.clone(),
-    }
-}
-
-fn split_poem_and_fortunes(lines: &[String]) -> (Vec<String>, Vec<String>) {
+/// 将 raw[7..][..pos] 诗歌+运势区拆分为 (诗歌, 运势)。含 `：` 或 `:` 的行视为运势。
+pub(crate) fn split_poem_and_fortunes(lines: &[String]) -> (Vec<String>, Vec<String>) {
     let mut poem = Vec::new();
     let mut fortunes = Vec::new();
     for line in lines {
