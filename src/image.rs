@@ -1,6 +1,8 @@
 use base64::Engine;
-use std::io::{Cursor, Write};
+use image::GenericImageView;
+use std::io::{Cursor, Read, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub struct ImageStore;
 
@@ -40,8 +42,8 @@ pub fn measure_image(png_bytes: &[u8], cell_w: u16) -> Result<ImageSize, String>
         .map_err(|e| format!("decode: {e}"))?;
 
     let (iw, ih) = (img.width(), img.height());
-    // 终端单元格通常是高度约为宽度的2倍
-    let cell_h = ((ih as f64 / iw as f64) * cell_w as f64 / 2.0) as u16;
+    // 使用终端真实单元格高宽比
+    let cell_h = ((ih as f64 / iw as f64) * cell_w as f64 / cell_aspect_ratio()) as u16;
 
     Ok(ImageSize { cell_h })
 }
@@ -130,10 +132,109 @@ pub fn detect_protocol() -> Option<Protocol> {
     }
 }
 
+// ── Cell aspect ratio ────────────────────────────────
+
+/// 解析 `\x1b[N;v1;v2t` 终端响应。
+fn parse_t(bytes: &[u8]) -> Option<(u32, u32)> {
+    let s = String::from_utf8_lossy(bytes);
+    let inner = s
+        .strip_prefix("\x1b[")
+        .or_else(|| s.strip_prefix("^[["))?;
+    let inner = inner.strip_suffix('t')?;
+    let parts: Vec<&str> = inner.split(';').collect();
+    if parts.len() >= 3 {
+        let a: u32 = parts[1].parse().ok()?;
+        let b: u32 = parts[2].parse().ok()?;
+        return Some((a, b));
+    }
+    None
+}
+
+/// 读取一个 `\x1b[...t` 终端响应。调用前需已进入 raw mode。
+fn read_t_response() -> Result<Vec<u8>, String> {
+    let mut stdin = std::io::stdin().lock();
+    let mut buf = [0u8; 1];
+    let mut bytes = Vec::new();
+    while bytes.last() != Some(&b't') {
+        stdin.read_exact(&mut buf).map_err(|e| format!("read: {e}"))?;
+        bytes.push(buf[0]);
+        if bytes.len() > 32 {
+            return Err("too long".into());
+        }
+    }
+    Ok(bytes)
+}
+
+/// 通过 \x1b[16t] 查询单元格像素高宽比。Kitty/WezTerm/Konsole 支持。
+pub fn query_cell_ratio_16t() -> Result<f64, String> {
+    let mut out = std::io::stdout().lock();
+    write!(out, "\x1b[16t").map_err(|e| format!("16t: {e}"))?;
+    out.flush().map_err(|e| format!("16t: {e}"))?;
+    drop(out);
+    let (h, w) = parse_t(&read_t_response()?).ok_or("16t parse")?;
+    Ok(h as f64 / w as f64)
+}
+
+/// 通过 \x1b[14t] + \x1b[18t] 查询单元格像素高宽比。iTerm2/xterm/Kitty 支持。
+pub fn query_cell_ratio_14_18() -> Result<f64, String> {
+    let mut out = std::io::stdout().lock();
+    write!(out, "\x1b[14t").map_err(|e| format!("14t: {e}"))?;
+    out.flush().map_err(|e| format!("14t: {e}"))?;
+    drop(out);
+    let (px_h, px_w) = parse_t(&read_t_response()?).ok_or("14t parse")?;
+
+    let mut out = std::io::stdout().lock();
+    write!(out, "\x1b[18t").map_err(|e| format!("18t: {e}"))?;
+    out.flush().map_err(|e| format!("18t: {e}"))?;
+    drop(out);
+    let (rows, cols) = parse_t(&read_t_response()?).ok_or("18t parse")?;
+
+    Ok((px_h as f64 / rows as f64) / (px_w as f64 / cols as f64))
+}
+
+static CELL_RATIO: AtomicU64 = AtomicU64::new(0);
+
+pub fn init_cell_ratio(r: f64) {
+    CELL_RATIO.store(r.to_bits(), Ordering::Release);
+}
+
+pub fn cell_aspect_ratio() -> f64 {
+    let bits = CELL_RATIO.load(Ordering::Acquire);
+    if bits == 0 {
+        return 2.0;
+    }
+    f64::from_bits(bits)
+}
+
+// ── Sixel height estimation ──────────────────────────
+
+/// 计算 Sixel 显示 PNG 将占据的终端行数。
+/// 不依赖 stdin 查询，纯粹基于图片尺寸 + 终端比例计算。
+pub fn sixel_compute_height(png_bytes: &[u8], cell_w: u16) -> Result<u16, String> {
+    let img = image::ImageReader::new(Cursor::new(png_bytes))
+        .with_guessed_format()
+        .map_err(|e| format!("decode: {e}"))?
+        .decode()
+        .map_err(|e| format!("decode: {e}"))?;
+
+    let (iw, ih) = img.dimensions();
+    let scale = std::env::var("MIKUJI_SIXEL_SCALE")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(10);
+
+    let sw = cell_w as u32 * scale;
+    // Sixel 内部渲染用 /2.0 补偿单元格高宽比
+    let sh = ((ih as f64 / iw as f64) * sw as f64 / 2.0) as u32;
+    // 换算为终端行数: 像素行 / (scale * ratio)
+    let rows = sh as f64 / (scale as f64 * cell_aspect_ratio());
+    Ok(rows.ceil() as u16)
+}
+
 // ── Sixel protocol ──────────────────────────────────
 
 /// 通过 Sixel 协议显示 PNG。
-pub fn sixel_emit(png_bytes: &[u8], cell_w: u16, _cell_h: u16) -> Result<(), String> {
+pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
     let img = image::ImageReader::new(Cursor::new(png_bytes))
         .with_guessed_format()
         .map_err(|e| format!("decode: {e}"))?

@@ -65,57 +65,90 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let text_col = LEFT_MARGIN + img_cells + 3;
     let text_max_w = tw.saturating_sub(text_col);
 
-    // 先加载图片并测量尺寸
+    // 先加载图片
     let store = image::ImageStore::new();
     let png_bytes = store.load_png_bytes(&fortune.name).ok();
-    let img_h = png_bytes
-        .as_ref()
-        .and_then(|b| image::measure_image(b, img_cells).ok())
-        .map(|s| s.cell_h)
-        .unwrap_or(0);
 
-    // 计算文本换行后的高度
+    // 计算文本换行
     let text = build_text(&fortune, lang);
     let mut wrapped_lines = Vec::new();
     for line in &text {
         wrapped_lines.extend(wrap_line(line, text_max_w as usize));
     }
-
-    // 若图片比文字高，补空行使文字比图片多一行
     let text_rows = wrapped_lines.len() as u16;
+
+    // 检测协议
+    let protocol = image::detect_protocol();
+
+    // ── 1. 开始输出 ──
+    let mut out = io::stdout().lock();
+    writeln!(out)?;
+    drop(out);
+
+    // ── 0. 初始化终端单元格比例 ──
+    {
+        let ratio = std::env::var("MIKUJI_CELL_RATIO")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .or_else(|| {
+                crossterm::terminal::enable_raw_mode().ok()?;
+                let is_iterm = std::env::var("TERM_PROGRAM")
+                    .map(|p| p.contains("iTerm"))
+                    .unwrap_or(false);
+                let r = if is_iterm {
+                    // iTerm2 不支持 16t，直接用 14t+18t
+                    image::query_cell_ratio_14_18().ok()
+                } else {
+                    image::query_cell_ratio_16t()
+                        .or_else(|_| image::query_cell_ratio_14_18())
+                        .ok()
+                };
+                crossterm::terminal::disable_raw_mode().ok()?;
+                r
+            })
+            .unwrap_or(2.0);
+        image::init_cell_ratio(ratio);
+    }
+
+    // ── 2. 发射图片 ──
+    let img_h: u16 = if let Some(ref png) = png_bytes {
+        match protocol {
+            Some(image::Protocol::Kitty) => {
+                let size = image::measure_image(png, img_cells)?;
+                let mut out = io::stdout().lock();
+                write!(out, "\x1b[{}G", LEFT_MARGIN)?;
+                drop(out);
+                image::kitty_emit(png, img_cells, size.cell_h)?;
+                size.cell_h
+            }
+            Some(image::Protocol::Sixel) => {
+                let h = image::sixel_compute_height(png, img_cells)?;
+                let mut out = io::stdout().lock();
+                write!(out, "\x1b7\x1b[{}G", LEFT_MARGIN)?;
+                drop(out);
+                image::sixel_emit(png, img_cells)?;
+                let mut out = io::stdout().lock();
+                write!(out, "\x1b8")?;
+                h
+            }
+            None => 0,
+        }
+    } else {
+        0
+    };
+
+    // ── 3. 输出文字 ──
+    let mut out = io::stdout().lock();
+
+    // 图片比文字高时补空行
     if img_h > text_rows {
         for _ in 0..(img_h - text_rows + 1) {
             wrapped_lines.push(String::new());
         }
     }
-
     let _total = img_h.max(wrapped_lines.len() as u16);
 
-    // ── 1. 在当前命令行下方直接开始输出（不清屏，让内容进入回滚缓冲区）──
-    let mut out = io::stdout().lock();
-    writeln!(out)?; // 先换一行，避免和 shell 提示符粘在一起
-
-    // ── 2. 发射图片 ──
-    if let Some(ref png) = png_bytes {
-        match image::detect_protocol() {
-            Some(image::Protocol::Kitty) => {
-                // Kitty: 先移动到左边距列
-                write!(out, "\x1b[{}G", LEFT_MARGIN)?;
-                image::kitty_emit(png, img_cells, img_h)?;
-            }
-            Some(image::Protocol::Sixel) => {
-                // Sixel: 移动到左边距列，输出图片（背景透明）
-                write!(out, "\x1b[{}G", LEFT_MARGIN)?;
-                image::sixel_emit(png, img_cells, img_h)?;
-                // Sixel 输出后光标在图片底部，需要向上移动到顶部
-                write!(out, "\x1b[{}A", img_h)?;
-            }
-            None => {} // 不显示图片
-        }
-    }
-
     // ── 3. 输出文字 ──
-    // 图片显示后光标在左上角，每行文字先定位到 text_col 列再写
     for (row, line) in wrapped_lines.iter().enumerate() {
         if row > 0 {
             writeln!(out)?;
