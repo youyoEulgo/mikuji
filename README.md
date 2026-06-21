@@ -40,7 +40,7 @@ cargo build --release
 cp target/release/mikuji ~/.local/bin/
 ```
 
-**Windows Terminal 用户**：编译时指定使用 Sixel 协议
+**Windows Terminal 用户**：编译时指定使用 Sixel 协议。WSL 中默认自动走 Sixel。
 
 ```bash
 cargo build --release --features force-sixel
@@ -85,61 +85,34 @@ Windows 下默认 `%LOCALAPPDATA%\mikuji\`。
 
 ## 终端兼容性
 
-图片显示支持 **Kitty Graphics Protocol** 和 **Sixel** 两种协议。
+协议检测全自动，无需用户关心。当前支持以下终端：
 
-**推荐使用支持 Kitty 协议的终端以获得最佳图片质量。** Sixel 协议在 Windows Terminal 中受限于实现，清晰度会明显降低。
+| 终端 | 协议 |
+|------|------|
+| WezTerm, iTerm2 | iTerm2 (OSC 1337) |
+| Kitty, Ghostty, Konsole | Kitty Graphics Protocol |
+| Windows Terminal, foot | Sixel |
+| xterm (部分), 原生 Linux | Kitty |
 
-### Kitty Graphics Protocol（推荐）
-
-| ✅ 支持          | ❌ 不支持          |
-| ---------------- | ------------------ |
-| Kitty            | Apple Terminal.app |
-| iTerm2 (3.x+)    | Alacritty          |
-| WezTerm          | foot               |
-| Konsole (24.08+) | Gnome Terminal     |
-
-### Sixel（备选方案）
-
-| ✅ 支持          | ❌ 不支持          |
-| ---------------- | ------------------ |
-| Windows Terminal | Apple Terminal.app |
-| WezTerm          | Alacritty          |
-| foot             | Gnome Terminal     |
-| xterm (部分)     |                    |
-
-**注意**：Sixel 在 Windows Terminal 中图片清晰度较低，属于协议和终端实现的限制。建议 Windows 用户考虑使用 [WezTerm](https://wezfurlong.org/wezterm/)（同时支持 Kitty 和 Sixel，Kitty 效果更好）。
-
-不支持时图片区域为空，文字正常显示。
+启动时通过环境变量识别终端品牌，并查询 CSI 16t 获取像素尺寸用于图片缩放。
+终端不支持图片时图片区域为空，文字正常显示。
 
 ### 手动指定协议
 
-**方法 1：编译时指定（推荐，Windows Terminal 用户）**
-
 ```bash
-cargo build --release --features force-sixel
+MIKUJI_PROTOCOL=iterm2 mikuji   # iTerm2 协议
+MIKUJI_PROTOCOL=kitty mikuji    # Kitty 协议
+MIKUJI_PROTOCOL=sixel mikuji    # Sixel 协议
+MIKUJI_PROTOCOL=none mikuji     # 禁用图片
 ```
 
-编译出的二进制固定使用 Sixel 协议。
-
-**方法 2：运行时环境变量**
+或编译时指定：
 
 ```bash
-# 使用 Kitty 协议
-MIKUJI_PROTOCOL=kitty mikuji
-
-# 使用 Sixel 协议
-MIKUJI_PROTOCOL=sixel mikuji
-
-# 禁用图片显示
-MIKUJI_PROTOCOL=none mikuji
+cargo build --release --features force-sixel   # 固定 Sixel
 ```
 
-**方法 3：永久环境变量**
-
-```bash
-# 添加到 ~/.bashrc 或 ~/.zshrc
-export MIKUJI_PROTOCOL=sixel
-```
+或设置永久环境变量：`export MIKUJI_PROTOCOL=sixel`。
 
 ## 用法
 
@@ -161,10 +134,13 @@ mikuji -w 120             # 指定终端宽度
 编辑 `src/main.rs` 开头的常量：
 
 ```rust
-const IMAGE_WIDTH: u16 = 55;
+const IMAGE_WIDTH: u16 = 100;
 ```
 
 修改后重新编译。图片宽度不会超过终端宽度的 1/3。
+
+终端单元格的像素尺寸通过 CSI 16t 自动查询（`init_cell_px`），图片据此
+缩放到精确匹配字符列宽的像素尺寸。如果查询失败，回退到默认 10px/列。
 
 ## 自定义签池
 
