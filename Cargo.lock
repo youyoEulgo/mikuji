@@ -416,6 +416,7 @@ dependencies = [
  "console",
  "crossterm",
  "image",
+ "libc",
  "rand",
  "serde",
  "serde_json",

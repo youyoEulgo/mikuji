@@ -1,5 +1,5 @@
 use base64::Engine;
-use image::GenericImageView;
+use image::{GenericImageView, ImageEncoder};
 use std::io::{Cursor, Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -26,14 +26,13 @@ fn image_path(name: &str) -> PathBuf {
         .join(name.replace(['·', '&'], "_") + ".png")
 }
 
-// ── Kitty protocol: a=T, q=1, f=100 (PNG), C=1 ──────
+// ── 图片尺寸估算 ──────────────────────────────────────
 
 pub struct ImageSize {
     pub cell_h: u16,
 }
 
-/// Measure how many rows a PNG will occupy when displayed at `cell_w` columns.
-/// Accounts for terminal cells being roughly twice as tall as wide.
+/// 根据图片像素尺寸和终端单元格高宽比，计算图片在 `cell_w` 列宽下占多少行。
 pub fn measure_image(png_bytes: &[u8], cell_w: u16) -> Result<ImageSize, String> {
     let img = image::ImageReader::new(Cursor::new(png_bytes))
         .with_guessed_format()
@@ -42,17 +41,18 @@ pub fn measure_image(png_bytes: &[u8], cell_w: u16) -> Result<ImageSize, String>
         .map_err(|e| format!("decode: {e}"))?;
 
     let (iw, ih) = (img.width(), img.height());
-    // 使用终端真实单元格高宽比
     let cell_h = ((ih as f64 / iw as f64) * cell_w as f64 / cell_aspect_ratio()) as u16;
 
     Ok(ImageSize { cell_h })
 }
 
-/// Transmit and display a PNG at current cursor position using Kitty Graphics Protocol.
-/// Uses columns (c) and rows (r) parameters so the terminal calculates the proper pixel size.
-/// q=1 suppresses terminal OK response (no stdin pollution).
-/// C=1 means cursor stays in place after display.
-/// f=100 means PNG format (terminal decodes it natively).
+// ── Kitty 协议 ───────────────────────────────────────
+
+/// 通过 Kitty Graphics Protocol 显示 PNG。
+///
+/// `c` 和 `r` 控制图片在终端中的显示尺寸（单元格列数 / 行数）。
+/// q=1 抑制终端 OK 响应，C=1 光标留在原位不动。
+/// 采用 4096 字节分块传输，逐块 base64 编码。
 pub fn kitty_emit(png_bytes: &[u8], cell_w: u16, cell_h: u16) -> Result<(), String> {
     let b64 = base64::engine::general_purpose::STANDARD.encode(png_bytes);
     let id = std::process::id() & 0x00ff_ffff;
@@ -77,19 +77,75 @@ pub fn kitty_emit(png_bytes: &[u8], cell_w: u16, cell_h: u16) -> Result<(), Stri
     Ok(())
 }
 
-// ── Protocol detection ──────────────────────────────
+// ── iTerm2 协议 (OSC 1337) ──────────────────────────
+
+/// 构建 iTerm2 inline-images 协议的 OSC 1337 转义序列。
+///
+/// 图片会预缩放到目标像素尺寸。返回转义序列字符串和估算的单元格高度，
+/// 供调用方用于文本布局。
+///
+/// 调用方必须用 `libc::write` 发送此序列——使用 Rust 的 `stdout().lock()`
+/// 会经过 `LineWriter`，其内部的 `BufWriter`(8KB) 会拆断 `\x1b\\` 终止符。
+/// 参见 yazi 的 Iip driver。
+pub fn iip_encode(png_bytes: &[u8], cell_w: u16) -> Result<(String, u16), String> {
+    use base64::Engine;
+    use std::fmt::Write;
+
+    let img = image::ImageReader::new(Cursor::new(png_bytes))
+        .with_guessed_format()
+        .map_err(|e| format!("decode: {e}"))?
+        .decode()
+        .map_err(|e| format!("decode: {e}"))?;
+
+    let rgba = img.to_rgba8();
+    let (iw, ih) = rgba.dimensions();
+
+    let px = px_per_col();
+    let target_w = (cell_w as f64 * px) as u32;
+    let target_h = ((ih as f64 / iw as f64) * target_w as f64) as u32;
+    let resized = image::imageops::resize(&rgba, target_w, target_h, image::imageops::FilterType::Triangle);
+    let (w, h) = (resized.width(), resized.height());
+
+    let mut png_buf = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut png_buf)
+        .write_image(&resized, w, h, image::ExtendedColorType::Rgba8)
+        .map_err(|e| format!("png encode: {e}"))?;
+
+    let mut seq = String::with_capacity(200 + png_buf.len() * 4 / 3);
+    write!(
+        seq,
+        "\x1b]1337;File=inline=1;size={};width={w}px;height={h}px;doNotMoveCursor=1:",
+        png_buf.len(),
+    )
+    .map_err(|e| format!("iip buf: {e}"))?;
+    base64::engine::general_purpose::STANDARD.encode_string(&png_buf, &mut seq);
+    write!(seq, "\x07").map_err(|e| format!("iip term: {e}"))?;
+
+    let cell_h = (target_h as f64 / cell_aspect_ratio() / px).ceil() as u16;
+    Ok((seq, cell_h.max(1)))
+}
+
+// ── 协议检测 ───────────────────────────────────────────
 
 #[derive(Debug)]
 pub enum Protocol {
     Kitty,
+    Iterm2,
     Sixel,
 }
 
-/// 检测终端支持的图形协议。
-/// 可通过 `MIKUJI_PROTOCOL` 环境变量覆盖：`kitty` / `sixel` / `none`。
-/// 编译时可通过 `--features force-sixel` 强制使用 Sixel。
+/// 检测终端支持的图形协议。跟 yazi 的 Brand → Driver 映射对齐。
+///
+/// - WezTerm → Iterm2 (OSC 1337)
+/// - iTerm2  → Iterm2 (OSC 1337)
+/// - Kitty   → Kitty
+/// - Ghostty/Konsole → Kitty
+/// - Windows Terminal / WSL → Sixel
+/// - 默认    → Kitty
+///
+/// 可通过 `MIKUJI_PROTOCOL` 环境变量覆盖，
+/// 编译时 `--features force-sixel` 强制 Sixel。
 pub fn detect_protocol() -> Option<Protocol> {
-    // 编译时 feature 优先级最高
     #[cfg(feature = "force-sixel")]
     {
         return Some(Protocol::Sixel);
@@ -123,6 +179,14 @@ pub fn detect_protocol() -> Option<Protocol> {
             return Some(Protocol::Kitty);
         }
 
+        if term_program.contains("WezTerm") {
+            return Some(Protocol::Iterm2);
+        }
+
+        if term_program.contains("iTerm") || std::env::var("ITERM_SESSION_ID").is_ok() {
+            return Some(Protocol::Iterm2);
+        }
+
         // WSL 下默认走 Sixel（Windows Terminal 支持）
         if std::path::Path::new("/proc/sys/fs/binfmt_misc/WSLInterop").exists() {
             return Some(Protocol::Sixel);
@@ -132,84 +196,83 @@ pub fn detect_protocol() -> Option<Protocol> {
     }
 }
 
-// ── Cell aspect ratio ────────────────────────────────
+// ── 终端单元格像素尺寸查询 ────────────────────────────────
 
-/// 解析 `\x1b[N;v1;v2t` 终端响应。
-fn parse_t(bytes: &[u8]) -> Option<(u32, u32)> {
-    let s = String::from_utf8_lossy(bytes);
-    let inner = s
-        .strip_prefix("\x1b[")
-        .or_else(|| s.strip_prefix("^[["))?;
-    let inner = inner.strip_suffix('t')?;
-    let parts: Vec<&str> = inner.split(';').collect();
-    if parts.len() >= 3 {
-        let a: u32 = parts[1].parse().ok()?;
-        let b: u32 = parts[2].parse().ok()?;
-        return Some((a, b));
+static CELL_PX_W: AtomicU64 = AtomicU64::new(0);
+static CELL_PX_H: AtomicU64 = AtomicU64::new(0);
+
+/// 通过 CSI 16t 查询终端真实单元格像素尺寸并缓存。
+/// 查询失败时保持默认值 10px/col, 20px/row（ratio=2.0）。
+pub fn init_cell_px() {
+    if let Some((w, h)) = query_csi_16t() {
+        CELL_PX_W.store((w.clamp(5.0, 30.0)).to_bits(), Ordering::Release);
+        CELL_PX_H.store((h.clamp(10.0, 60.0)).to_bits(), Ordering::Release);
     }
-    None
 }
 
-/// 读取一个 `\x1b[...t` 终端响应。调用前需已进入 raw mode。
-fn read_t_response() -> Result<Vec<u8>, String> {
+/// 终端每列对应的像素宽度。
+/// CSI 16t 查询失败时回退到 10px。
+pub fn px_per_col() -> f64 {
+    let bits = CELL_PX_W.load(Ordering::Acquire);
+    if bits == 0 { 10.0 } else { f64::from_bits(bits) }
+}
+
+/// 终端单元格高宽比 (height / width)。
+/// CSI 16t 查询失败时回退到 2.0。
+pub fn cell_aspect_ratio() -> f64 {
+    let wb = CELL_PX_W.load(Ordering::Acquire);
+    let hb = CELL_PX_H.load(Ordering::Acquire);
+    if wb == 0 || hb == 0 {
+        2.0
+    } else {
+        f64::from_bits(hb) / f64::from_bits(wb)
+    }
+}
+
+/// 发送 CSI 16t 查询，解析终端返回的单元格像素尺寸。
+///
+/// WezTerm 的响应格式为 `\x1b[6;;30;15t`（双分号），
+/// 其他终端通常为 `\x1b[6;30;15t`（单分号），parser 兼容两种格式。
+/// 返回 (px_per_col, px_per_row)。
+fn query_csi_16t() -> Option<(f64, f64)> {
+    crossterm::terminal::enable_raw_mode().ok()?;
+    let mut out = std::io::stdout().lock();
+    write!(out, "\x1b[s\x1b[16t\x1b[u").ok()?;
+    out.flush().ok()?;
+    drop(out);
+
     let mut stdin = std::io::stdin().lock();
-    let mut buf = [0u8; 1];
-    let mut bytes = Vec::new();
-    while bytes.last() != Some(&b't') {
-        stdin.read_exact(&mut buf).map_err(|e| format!("read: {e}"))?;
-        bytes.push(buf[0]);
-        if bytes.len() > 32 {
-            return Err("too long".into());
+    let mut buf = Vec::new();
+    let start = std::time::Instant::now();
+    loop {
+        if start.elapsed().as_millis() > 400 { break; }
+        let mut b = [0u8; 1];
+        match stdin.read(&mut b) {
+            Ok(1) => {
+                buf.push(b[0]);
+                if b[0] == b't' && buf.windows(3).any(|w| w == b"\x1b[6") {
+                    break;
+                }
+            }
+            _ => std::thread::sleep(std::time::Duration::from_millis(10)),
         }
     }
-    Ok(bytes)
+    crossterm::terminal::disable_raw_mode().ok()?;
+
+    let s = String::from_utf8_lossy(&buf);
+    let p = s.find("\x1b[6;")?;
+    let rest = &s[p + 3..];
+    let inner = &rest[..rest.find('t')?];
+    // 兼容单分号和双分号
+    let nums: Vec<u32> = inner.split(';').filter(|s| !s.is_empty()).filter_map(|s| s.parse().ok()).collect();
+    let h = *nums.first()?;
+    let w = *nums.get(1)?;
+    Some((w as f64, h as f64))
 }
 
-/// 通过 \x1b[16t] 查询单元格像素高宽比。Kitty/WezTerm/Konsole 支持。
-pub fn query_cell_ratio_16t() -> Result<f64, String> {
-    let mut out = std::io::stdout().lock();
-    write!(out, "\x1b[16t").map_err(|e| format!("16t: {e}"))?;
-    out.flush().map_err(|e| format!("16t: {e}"))?;
-    drop(out);
-    let (h, w) = parse_t(&read_t_response()?).ok_or("16t parse")?;
-    Ok(h as f64 / w as f64)
-}
-
-/// 通过 \x1b[14t] + \x1b[18t] 查询单元格像素高宽比。iTerm2/xterm/Kitty 支持。
-pub fn query_cell_ratio_14_18() -> Result<f64, String> {
-    let mut out = std::io::stdout().lock();
-    write!(out, "\x1b[14t").map_err(|e| format!("14t: {e}"))?;
-    out.flush().map_err(|e| format!("14t: {e}"))?;
-    drop(out);
-    let (px_h, px_w) = parse_t(&read_t_response()?).ok_or("14t parse")?;
-
-    let mut out = std::io::stdout().lock();
-    write!(out, "\x1b[18t").map_err(|e| format!("18t: {e}"))?;
-    out.flush().map_err(|e| format!("18t: {e}"))?;
-    drop(out);
-    let (rows, cols) = parse_t(&read_t_response()?).ok_or("18t parse")?;
-
-    Ok((px_h as f64 / rows as f64) / (px_w as f64 / cols as f64))
-}
-
-static CELL_RATIO: AtomicU64 = AtomicU64::new(0);
-
-pub fn init_cell_ratio(r: f64) {
-    CELL_RATIO.store(r.to_bits(), Ordering::Release);
-}
-
-pub fn cell_aspect_ratio() -> f64 {
-    let bits = CELL_RATIO.load(Ordering::Acquire);
-    if bits == 0 {
-        return 2.0;
-    }
-    f64::from_bits(bits)
-}
-
-// ── Sixel height estimation ──────────────────────────
+// ── Sixel 高度估算 ─────────────────────────────────────
 
 /// 计算 Sixel 显示 PNG 将占据的终端行数。
-/// 不依赖 stdin 查询，纯粹基于图片尺寸 + 终端比例计算。
 pub fn sixel_compute_height(png_bytes: &[u8], cell_w: u16) -> Result<u16, String> {
     let img = image::ImageReader::new(Cursor::new(png_bytes))
         .with_guessed_format()
@@ -224,14 +287,12 @@ pub fn sixel_compute_height(png_bytes: &[u8], cell_w: u16) -> Result<u16, String
         .unwrap_or(10);
 
     let sw = cell_w as u32 * scale;
-    // Sixel 内部渲染用 /2.0 补偿单元格高宽比
     let sh = ((ih as f64 / iw as f64) * sw as f64 / 2.0) as u32;
-    // 换算为终端行数: 像素行 / (scale * ratio)
     let rows = sh as f64 / (scale as f64 * cell_aspect_ratio());
     Ok(rows.ceil() as u16)
 }
 
-// ── Sixel protocol ──────────────────────────────────
+// ── Sixel 协议 ────────────────────────────────────────
 
 /// 通过 Sixel 协议显示 PNG。
 pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
@@ -244,21 +305,17 @@ pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
     let rgba = img.to_rgba8();
     let (iw, ih) = rgba.dimensions();
 
-    // 缩放到目标像素宽（scale 需要匹配终端实际的单元格像素宽度）
-    // Windows Terminal 通常是 8-12 像素/列，具体取决于字体和 DPI
-    // 可通过环境变量 MIKUJI_SIXEL_SCALE 覆盖（例如：export MIKUJI_SIXEL_SCALE=12）
+    // 缩放到目标像素宽
     let scale = std::env::var("MIKUJI_SIXEL_SCALE")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(10);
     let sw = cell_w as u32 * scale;
-    // 终端字符高宽比约为 2:1，需要除以 2 来补偿
     let sh = ((ih as f64 / iw as f64) * sw as f64 / 2.0) as u32;
 
     let resized = image::imageops::resize(&rgba, sw, sh, image::imageops::FilterType::Lanczos3);
 
-    // 构建全局调色板（避免 band 间颜色不一致导致条纹）
-    // 使用更细致的量化：RGB 各 8 级（512 色）
+    // 全局调色板（避免 band 间颜色不一致导致条纹）
     let q = |c: u8| -> u8 { ((c as u32 * 7 + 127) / 255 * 255 / 7) as u8 };
 
     let mut palette: Vec<(u8, u8, u8)> = Vec::new();
@@ -269,7 +326,6 @@ pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
     palette.push(white);
     color_map.insert(white, 0);
 
-    // 扫描整个图像建立全局调色板
     for y in 0..sh {
         for x in 0..sw {
             let p = resized.get_pixel(x, y);
@@ -286,8 +342,6 @@ pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
     }
 
     let mut out = std::io::stdout().lock();
-    // Sixel 序列开始：P 后跟参数，q 表示 Sixel 模式
-    // 参数 0;1: 第二个参数=1表示保持背景透明（不覆盖原有内容）
     write!(out, "\x1bP0;1q").map_err(|e| format!("sixel start: {e}"))?;
 
     // 定义全局颜色寄存器
@@ -300,7 +354,6 @@ pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
 
     // 按 6 像素高度的 band 输出
     for band_y in (0..sh).step_by(6) {
-        // 每个颜色的 sixel 数据
         for (ci, &color) in palette.iter().enumerate() {
             let mut has_data = false;
             let mut run_len = 0u32;
@@ -324,7 +377,7 @@ pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
                     }
                 }
 
-                // Run-length encoding：连续相同的 sixel 字符可压缩
+                // RLE 压缩
                 if byte == last_byte && run_len > 0 {
                     run_len += 1;
                 } else {
@@ -348,7 +401,6 @@ pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
                 }
             }
 
-            // 输出最后一个 run
             if run_len > 0 {
                 if !has_data {
                     write!(out, "#{}", ci).map_err(|e| format!("sixel color: {e}"))?;
@@ -364,19 +416,16 @@ pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
                 }
             }
 
-            // 回到行首准备下一个颜色
             if has_data && ci + 1 < palette.len() {
                 write!(out, "$").map_err(|e| format!("sixel cr: {e}"))?;
             }
         }
 
-        // 下一个 band（换行）
         if band_y + 6 < sh {
             write!(out, "-").map_err(|e| format!("sixel lf: {e}"))?;
         }
     }
 
-    // Sixel 结束
     write!(out, "\x1b\\").map_err(|e| format!("sixel end: {e}"))?;
     out.flush().map_err(|e| format!("sixel flush: {e}"))?;
 

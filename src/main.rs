@@ -8,7 +8,7 @@ use clap::Parser;
 use fortune::{
     FortuneEntry, load_fortunes, pick_by_date, pick_by_name, pick_by_number, pick_random,
 };
-use std::io::{self, Write};
+use std::io::{self, Write as IoWrite};
 
 fn main() {
     if let Err(e) = run() {
@@ -85,30 +85,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     writeln!(out)?;
     drop(out);
 
-    // ── 0. 初始化终端单元格比例 ──
-    {
-        let ratio = std::env::var("MIKUJI_CELL_RATIO")
-            .ok()
-            .and_then(|v| v.parse::<f64>().ok())
-            .or_else(|| {
-                crossterm::terminal::enable_raw_mode().ok()?;
-                let is_iterm = std::env::var("TERM_PROGRAM")
-                    .map(|p| p.contains("iTerm"))
-                    .unwrap_or(false);
-                let r = if is_iterm {
-                    // iTerm2 不支持 16t，直接用 14t+18t
-                    image::query_cell_ratio_14_18().ok()
-                } else {
-                    image::query_cell_ratio_16t()
-                        .or_else(|_| image::query_cell_ratio_14_18())
-                        .ok()
-                };
-                crossterm::terminal::disable_raw_mode().ok()?;
-                r
-            })
-            .unwrap_or(2.0);
-        image::init_cell_ratio(ratio);
-    }
+    // Cell pixel size — CSI 16t 查询终端真实像素尺寸，用于图片缩放。
+    image::init_cell_px();
 
     // ── 2. 发射图片 ──
     let img_h: u16 = if let Some(ref png) = png_bytes {
@@ -120,6 +98,45 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 drop(out);
                 image::kitty_emit(png, img_cells, size.cell_h)?;
                 size.cell_h
+            }
+            Some(image::Protocol::Iterm2) => {
+                let (iip_seq, img_h) = image::iip_encode(png, img_cells)?;
+
+                // 拼接完整输出：先空足行数 → \x1b[A 回退到图片起始行 → IIP → 右侧文字
+                let mut full = String::new();
+                use std::fmt::Write;
+                for _ in 0..img_h + 2 {
+                    full.push('\n');
+                }
+                write!(full, "\x1b[{}A\x1b[{}G", img_h + 2, LEFT_MARGIN + 1).unwrap();
+                full.push_str(&iip_seq);
+                // 文字在右侧
+                for (row, line) in wrapped_lines.iter().enumerate() {
+                    if row == 0 {
+                        write!(full, "\x1b[{}G{}", text_col, line).unwrap();
+                    } else {
+                        full.push('\n');
+                        write!(full, "\x1b[{}G{}", text_col, line).unwrap();
+                    }
+                }
+                // 补空行，确保文字结束时不低于图片底部
+                let text_rows = wrapped_lines.len() as u16;
+                if img_h > text_rows {
+                    for _ in 0..(img_h - text_rows + 1) {
+                        full.push('\n');
+                    }
+                }
+                full.push('\n');
+                write!(full, "\x1b[{}G按任意键退出...", text_col).unwrap();
+
+                #[cfg(unix)]
+                {
+                    use std::os::unix::io::AsRawFd;
+                    let fd = std::io::stdout().as_raw_fd();
+                    let n = unsafe { libc::write(fd, full.as_ptr() as _, full.len()) };
+                    if n < 0 { return Err("libc::write failed".into()); }
+                }
+                img_h
             }
             Some(image::Protocol::Sixel) => {
                 let h = image::sixel_compute_height(png, img_cells)?;
@@ -137,35 +154,45 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         0
     };
 
-    // ── 3. 输出文字 ──
-    let mut out = io::stdout().lock();
+    let iip_done = matches!(protocol, Some(image::Protocol::Iterm2));
 
-    // 图片比文字高时补空行
-    if img_h > text_rows {
-        for _ in 0..(img_h - text_rows + 1) {
-            wrapped_lines.push(String::new());
+    if !iip_done {
+        // ── 3. 输出文字 ──
+        let mut out = io::stdout().lock();
+
+        // 图片比文字高时补空行
+        if img_h > text_rows {
+            for _ in 0..(img_h - text_rows + 1) {
+                wrapped_lines.push(String::new());
+            }
         }
-    }
-    let _total = img_h.max(wrapped_lines.len() as u16);
+        let _total = img_h.max(wrapped_lines.len() as u16);
 
-    // ── 3. 输出文字 ──
-    for (row, line) in wrapped_lines.iter().enumerate() {
-        if row > 0 {
-            writeln!(out)?;
+        for (row, line) in wrapped_lines.iter().enumerate() {
+            if row > 0 {
+                writeln!(out)?;
+            }
+            write!(out, "\x1b[{}G{}", text_col, line)?;
         }
-        write!(out, "\x1b[{}G{}", text_col, line)?;
-    }
 
-    // ── 5. 提示并等待用户按键 ──
-    write!(out, "\n按任意键退出...")?;
-    out.flush()?;
-    drop(out); // 释放锁，避免 read 时死锁
+        write!(out, "\n按任意键退出...")?;
+        out.flush()?;
+        drop(out);
+    }
 
     // 用 crossterm 事件读取按键，忽略 Kitty 响应等非按键事件
     crossterm::terminal::enable_raw_mode()?;
     loop {
-        if let crossterm::event::Event::Key(_) = crossterm::event::read()? {
-            break;
+        match crossterm::event::read()? {
+            crossterm::event::Event::Key(k) => {
+                use crossterm::event::KeyCode;
+                match k.code {
+                    KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown
+                    | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {}
+                    _ => break,
+                }
+            }
+            _ => {} // 忽略 Mouse, Resize 等
         }
     }
     crossterm::terminal::disable_raw_mode()?;
