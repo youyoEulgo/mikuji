@@ -104,6 +104,128 @@ pub(crate) fn iip_emit(png_bytes: &[u8], cell_w: u16) -> Result<(String, u16), a
     Ok((seq, cell_h.max(1)))
 }
 
+// ── Sixel 协议 ────────────────────────────────────────
+
+/// 通过 Sixel 协议显示 PNG，返回占用的单元格行高。
+#[must_use]
+pub(crate) fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<u16, anyhow::Error> {
+    let img = image::ImageReader::new(Cursor::new(png_bytes))
+        .with_guessed_format().context("decode")?
+        .decode().context("decode")?;
+
+    let rgba = img.to_rgba8();
+    let (iw, ih) = (rgba.width(), rgba.height());
+
+    let scale = std::env::var("MIKUJI_SIXEL_SCALE")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(10);
+    let sw = cell_w as u32 * scale;
+    let sh = ((ih as f64 / iw as f64) * sw as f64 / 2.0) as u32;
+    let rows = (sh as f64 / (scale as f64 * cell_aspect_ratio())).ceil() as u16;
+
+    let resized = image::imageops::resize(&rgba, sw, sh, image::imageops::FilterType::Lanczos3);
+
+    let q = |c: u8| -> u8 { ((c as u32 * 7 + 127) / 255 * 255 / 7) as u8 };
+
+    let mut palette: Vec<(u8, u8, u8)> = Vec::new();
+    let mut color_map = std::collections::HashMap::new();
+
+    let white = (255u8, 255u8, 255u8);
+    palette.push(white);
+    color_map.insert(white, 0);
+
+    for y in 0..sh {
+        for x in 0..sw {
+            let p = resized.get_pixel(x, y);
+            let key = if p[3] < 128 { white } else { (q(p[0]), q(p[1]), q(p[2])) };
+            if !color_map.contains_key(&key) && palette.len() < 256 {
+                color_map.insert(key, palette.len());
+                palette.push(key);
+            }
+        }
+    }
+
+    let mut out = std::io::stdout().lock();
+    write!(out, "\x1bP0;1q").context("sixel start")?;
+
+    for (i, &(r, g, b)) in palette.iter().enumerate() {
+        let rp = (r as u32 * 100 / 255) as u8;
+        let gp = (g as u32 * 100 / 255) as u8;
+        let bp = (b as u32 * 100 / 255) as u8;
+        write!(out, "#{};2;{};{};{}", i, rp, gp, bp).context("sixel palette")?;
+    }
+
+    for band_y in (0..sh).step_by(6) {
+        for (ci, &color) in palette.iter().enumerate() {
+            let mut has_data = false;
+            let mut run_len = 0u32;
+            let mut last_byte = 0u8;
+
+            for x in 0..sw {
+                let mut byte: u8 = 0;
+                for dy in 0..6 {
+                    let y = band_y + dy;
+                    if y >= sh { break; }
+                    let p = resized.get_pixel(x, y);
+                    let pixel_color = if p[3] < 128 { white } else { (q(p[0]), q(p[1]), q(p[2])) };
+                    if pixel_color == color { byte |= 1 << dy; }
+                }
+
+                if byte == last_byte && run_len > 0 {
+                    run_len += 1;
+                } else {
+                    if run_len > 0 {
+                        if !has_data {
+                            write!(out, "#{}", ci).context("sixel color")?;
+                            has_data = true;
+                        }
+                        if run_len >= 3 {
+                            write!(out, "!{}{}", run_len, (last_byte + 63) as char)
+                                .context("sixel rle")?;
+                        } else {
+                            for _ in 0..run_len {
+                                write!(out, "{}", (last_byte + 63) as char)
+                                    .context("sixel char")?;
+                            }
+                        }
+                    }
+                    last_byte = byte;
+                    run_len = 1;
+                }
+            }
+
+            if run_len > 0 {
+                if !has_data {
+                    write!(out, "#{}", ci).context("sixel color")?;
+                }
+                if run_len >= 3 {
+                    write!(out, "!{}{}", run_len, (last_byte + 63) as char)
+                        .context("sixel rle")?;
+                } else {
+                    for _ in 0..run_len {
+                        write!(out, "{}", (last_byte + 63) as char)
+                            .context("sixel char")?;
+                    }
+                }
+            }
+
+            if has_data && ci + 1 < palette.len() {
+                write!(out, "$").context("sixel cr")?;
+            }
+        }
+
+        if band_y + 6 < sh {
+            write!(out, "-").context("sixel lf")?;
+        }
+    }
+
+    write!(out, "\x1b\\").context("sixel end")?;
+    out.flush().context("sixel flush")?;
+
+    Ok(rows)
+}
+
 // ── 协议检测 ───────────────────────────────────────────
 
 #[derive(Debug)]
@@ -300,126 +422,4 @@ fn query_csi_16t() -> Option<(f64, f64)> {
     let h = *nums.first()?;
     let w = *nums.get(1)?;
     Some((w as f64, h as f64))
-}
-
-// ── Sixel 协议 ────────────────────────────────────────
-
-/// 通过 Sixel 协议显示 PNG，返回占用的单元格行高。
-#[must_use]
-pub(crate) fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<u16, anyhow::Error> {
-    let img = image::ImageReader::new(Cursor::new(png_bytes))
-        .with_guessed_format().context("decode")?
-        .decode().context("decode")?;
-
-    let rgba = img.to_rgba8();
-    let (iw, ih) = (rgba.width(), rgba.height());
-
-    let scale = std::env::var("MIKUJI_SIXEL_SCALE")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(10);
-    let sw = cell_w as u32 * scale;
-    let sh = ((ih as f64 / iw as f64) * sw as f64 / 2.0) as u32;
-    let rows = (sh as f64 / (scale as f64 * cell_aspect_ratio())).ceil() as u16;
-
-    let resized = image::imageops::resize(&rgba, sw, sh, image::imageops::FilterType::Lanczos3);
-
-    let q = |c: u8| -> u8 { ((c as u32 * 7 + 127) / 255 * 255 / 7) as u8 };
-
-    let mut palette: Vec<(u8, u8, u8)> = Vec::new();
-    let mut color_map = std::collections::HashMap::new();
-
-    let white = (255u8, 255u8, 255u8);
-    palette.push(white);
-    color_map.insert(white, 0);
-
-    for y in 0..sh {
-        for x in 0..sw {
-            let p = resized.get_pixel(x, y);
-            let key = if p[3] < 128 { white } else { (q(p[0]), q(p[1]), q(p[2])) };
-            if !color_map.contains_key(&key) && palette.len() < 256 {
-                color_map.insert(key, palette.len());
-                palette.push(key);
-            }
-        }
-    }
-
-    let mut out = std::io::stdout().lock();
-    write!(out, "\x1bP0;1q").context("sixel start")?;
-
-    for (i, &(r, g, b)) in palette.iter().enumerate() {
-        let rp = (r as u32 * 100 / 255) as u8;
-        let gp = (g as u32 * 100 / 255) as u8;
-        let bp = (b as u32 * 100 / 255) as u8;
-        write!(out, "#{};2;{};{};{}", i, rp, gp, bp).context("sixel palette")?;
-    }
-
-    for band_y in (0..sh).step_by(6) {
-        for (ci, &color) in palette.iter().enumerate() {
-            let mut has_data = false;
-            let mut run_len = 0u32;
-            let mut last_byte = 0u8;
-
-            for x in 0..sw {
-                let mut byte: u8 = 0;
-                for dy in 0..6 {
-                    let y = band_y + dy;
-                    if y >= sh { break; }
-                    let p = resized.get_pixel(x, y);
-                    let pixel_color = if p[3] < 128 { white } else { (q(p[0]), q(p[1]), q(p[2])) };
-                    if pixel_color == color { byte |= 1 << dy; }
-                }
-
-                if byte == last_byte && run_len > 0 {
-                    run_len += 1;
-                } else {
-                    if run_len > 0 {
-                        if !has_data {
-                            write!(out, "#{}", ci).context("sixel color")?;
-                            has_data = true;
-                        }
-                        if run_len >= 3 {
-                            write!(out, "!{}{}", run_len, (last_byte + 63) as char)
-                                .context("sixel rle")?;
-                        } else {
-                            for _ in 0..run_len {
-                                write!(out, "{}", (last_byte + 63) as char)
-                                    .context("sixel char")?;
-                            }
-                        }
-                    }
-                    last_byte = byte;
-                    run_len = 1;
-                }
-            }
-
-            if run_len > 0 {
-                if !has_data {
-                    write!(out, "#{}", ci).context("sixel color")?;
-                }
-                if run_len >= 3 {
-                    write!(out, "!{}{}", run_len, (last_byte + 63) as char)
-                        .context("sixel rle")?;
-                } else {
-                    for _ in 0..run_len {
-                        write!(out, "{}", (last_byte + 63) as char)
-                            .context("sixel char")?;
-                    }
-                }
-            }
-
-            if has_data && ci + 1 < palette.len() {
-                write!(out, "$").context("sixel cr")?;
-            }
-        }
-
-        if band_y + 6 < sh {
-            write!(out, "-").context("sixel lf")?;
-        }
-    }
-
-    write!(out, "\x1b\\").context("sixel end")?;
-    out.flush().context("sixel flush")?;
-
-    Ok(rows)
 }
