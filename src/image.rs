@@ -1,5 +1,6 @@
+use anyhow::Context;
 use base64::Engine;
-use image::{GenericImageView, ImageEncoder};
+use image::ImageEncoder;
 use std::io::{Cursor, Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -11,9 +12,10 @@ impl ImageStore {
         Self
     }
 
-    pub fn load_png_bytes(&self, name: &str) -> Result<Vec<u8>, String> {
+    pub(crate) fn load_png_bytes(&self, name: &str) -> Result<Vec<u8>, anyhow::Error> {
         let path = image_path(name);
-        std::fs::read(&path).map_err(|e| format!("无法读取图片 {}: {}", path.display(), e))
+        std::fs::read(&path)
+            .with_context(|| format!("无法读取图片 {}", path.display()))
     }
 }
 
@@ -26,34 +28,17 @@ fn image_path(name: &str) -> PathBuf {
         .join(name.replace(['·', '&'], "_") + ".png")
 }
 
-// ── 图片尺寸估算 ──────────────────────────────────────
+// ── Kitty 协议 ───────────────────────────────────────
 
-pub struct ImageSize {
-    pub cell_h: u16,
-}
-
-/// 根据图片像素尺寸和终端单元格高宽比，计算图片在 `cell_w` 列宽下占多少行。
-pub fn measure_image(png_bytes: &[u8], cell_w: u16) -> Result<ImageSize, String> {
+/// 通过 Kitty Graphics Protocol 显示 PNG，返回占用的单元格行高。
+#[must_use]
+pub(crate) fn kitty_emit(png_bytes: &[u8], cell_w: u16) -> Result<u16, anyhow::Error> {
     let img = image::ImageReader::new(Cursor::new(png_bytes))
-        .with_guessed_format()
-        .map_err(|e| format!("decode: {e}"))?
-        .decode()
-        .map_err(|e| format!("decode: {e}"))?;
-
+        .with_guessed_format().context("decode")?
+        .decode().context("decode")?;
     let (iw, ih) = (img.width(), img.height());
     let cell_h = ((ih as f64 / iw as f64) * cell_w as f64 / cell_aspect_ratio()) as u16;
 
-    Ok(ImageSize { cell_h })
-}
-
-// ── Kitty 协议 ───────────────────────────────────────
-
-/// 通过 Kitty Graphics Protocol 显示 PNG。
-///
-/// `c` 和 `r` 控制图片在终端中的显示尺寸（单元格列数 / 行数）。
-/// q=1 抑制终端 OK 响应，C=1 光标留在原位不动。
-/// 采用 4096 字节分块传输，逐块 base64 编码。
-pub fn kitty_emit(png_bytes: &[u8], cell_w: u16, cell_h: u16) -> Result<(), String> {
     let b64 = base64::engine::general_purpose::STANDARD.encode(png_bytes);
     let id = std::process::id() & 0x00ff_ffff;
     let mut out = std::io::stdout().lock();
@@ -61,44 +46,38 @@ pub fn kitty_emit(png_bytes: &[u8], cell_w: u16, cell_h: u16) -> Result<(), Stri
 
     for (i, chunk) in b64.as_bytes().chunks(4096).enumerate() {
         let more = u8::from(i + 1 < total);
-        let data = std::str::from_utf8(chunk).unwrap();
+        let data = std::str::from_utf8(chunk).expect("base64 is always ASCII");
         if i == 0 {
             write!(
                 out,
                 "\x1b_Ga=T,C=1,q=1,f=100,c={cell_w},r={cell_h},i={id},m={more};{data}\x1b\\"
             )
-            .map_err(|e| format!("header: {e}"))?;
+            .context("header")?;
         } else {
-            write!(out, "\x1b_Gm={more};{data}\x1b\\").map_err(|e| format!("chunk: {e}"))?;
+            write!(out, "\x1b_Gm={more};{data}\x1b\\").context("chunk")?;
         }
     }
-    out.flush().map_err(|e| format!("flush: {e}"))?;
+    out.flush().context("flush")?;
 
-    Ok(())
+    Ok(cell_h)
 }
 
 // ── iTerm2 协议 (OSC 1337) ──────────────────────────
 
-/// 构建 iTerm2 inline-images 协议的 OSC 1337 转义序列。
+/// 构建 iTerm2 inline-images 协议的 OSC 1337 序列，返回 (序列, 行高)。
 ///
-/// 图片会预缩放到目标像素尺寸。返回转义序列字符串和估算的单元格高度，
-/// 供调用方用于文本布局。
-///
-/// 调用方必须用 `libc::write` 发送此序列——使用 Rust 的 `stdout().lock()`
-/// 会经过 `LineWriter`，其内部的 `BufWriter`(8KB) 会拆断 `\x1b\\` 终止符。
-/// 参见 yazi 的 Iip driver。
-pub fn iip_encode(png_bytes: &[u8], cell_w: u16) -> Result<(String, u16), String> {
+/// 调用方必须用 `libc::write` 发送序列——Rust `stdout().lock()` 的 `LineWriter` 会拆断终止符。
+#[must_use]
+pub(crate) fn iip_emit(png_bytes: &[u8], cell_w: u16) -> Result<(String, u16), anyhow::Error> {
     use base64::Engine;
     use std::fmt::Write;
 
     let img = image::ImageReader::new(Cursor::new(png_bytes))
-        .with_guessed_format()
-        .map_err(|e| format!("decode: {e}"))?
-        .decode()
-        .map_err(|e| format!("decode: {e}"))?;
+        .with_guessed_format().context("decode")?
+        .decode().context("decode")?;
 
     let rgba = img.to_rgba8();
-    let (iw, ih) = rgba.dimensions();
+    let (iw, ih) = (rgba.width(), rgba.height());
 
     let px = px_per_col();
     let target_w = (cell_w as f64 * px) as u32;
@@ -109,7 +88,7 @@ pub fn iip_encode(png_bytes: &[u8], cell_w: u16) -> Result<(String, u16), String
     let mut png_buf = Vec::new();
     image::codecs::png::PngEncoder::new(&mut png_buf)
         .write_image(&resized, w, h, image::ExtendedColorType::Rgba8)
-        .map_err(|e| format!("png encode: {e}"))?;
+        .context("png encode")?;
 
     let mut seq = String::with_capacity(200 + png_buf.len() * 4 / 3);
     write!(
@@ -117,9 +96,9 @@ pub fn iip_encode(png_bytes: &[u8], cell_w: u16) -> Result<(String, u16), String
         "\x1b]1337;File=inline=1;size={};width={w}px;height={h}px;doNotMoveCursor=1:",
         png_buf.len(),
     )
-    .map_err(|e| format!("iip buf: {e}"))?;
+    .context("iip buf")?;
     base64::engine::general_purpose::STANDARD.encode_string(&png_buf, &mut seq);
-    write!(seq, "\x07").map_err(|e| format!("iip term: {e}"))?;
+    write!(seq, "\x07").context("iip term")?;
 
     let cell_h = (target_h as f64 / cell_aspect_ratio() / px).ceil() as u16;
     Ok((seq, cell_h.max(1)))
@@ -203,7 +182,7 @@ static CELL_PX_H: AtomicU64 = AtomicU64::new(0);
 
 /// 通过 CSI 16t 查询终端真实单元格像素尺寸并缓存。
 /// 查询失败时保持默认值 10px/col, 20px/row（ratio=2.0）。
-pub fn init_cell_px() {
+pub(crate) fn init_cell_px() {
     // Priority 1: ioctl(TIOCGWINSZ) — yazi 同款方案
     if let Some((w, h)) = query_ioctl_winsize() {
         CELL_PX_W.store(w.clamp(5.0, 30.0).to_bits(), Ordering::Release);
@@ -219,14 +198,14 @@ pub fn init_cell_px() {
 
 /// 终端每列对应的像素宽度。
 /// CSI 16t 查询失败时回退到 10px。
-pub fn px_per_col() -> f64 {
+pub(crate) fn px_per_col() -> f64 {
     let bits = CELL_PX_W.load(Ordering::Acquire);
     if bits == 0 { 10.0 } else { f64::from_bits(bits) }
 }
 
 /// 终端单元格高宽比 (height / width)。
 /// CSI 16t 查询失败时回退到 2.0。
-pub fn cell_aspect_ratio() -> f64 {
+pub(crate) fn cell_aspect_ratio() -> f64 {
     let wb = CELL_PX_W.load(Ordering::Acquire);
     let hb = CELL_PX_H.load(Ordering::Acquire);
     if wb == 0 || hb == 0 {
@@ -242,6 +221,7 @@ fn query_ioctl_winsize() -> Option<(f64, f64)> {
     #[cfg(unix)]
     {
         use std::os::unix::io::AsRawFd;
+        // SAFETY: stdout fd is always valid; winsize is POD, zeroed, and only read by ioctl
         let fd = std::io::stdout().as_raw_fd();
         let mut ws: libc::winsize = unsafe { std::mem::zeroed() };
         if unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, &mut ws) } == 0
@@ -267,13 +247,14 @@ fn query_ioctl_winsize() -> Option<(f64, f64)> {
 fn query_csi_16t() -> Option<(f64, f64)> {
     crossterm::terminal::enable_raw_mode().ok()?;
 
-    // 暂存并设 stdin 为非阻塞，防止不支持 16t 的终端永久阻塞
     #[cfg(unix)]
     let saved_flags = {
         use std::os::unix::io::AsRawFd;
+        // SAFETY: stdin fd is always valid; reading flags (F_GETFL) has no side effects
         let fd = std::io::stdin().as_raw_fd();
         let orig = unsafe { libc::fcntl(fd, libc::F_GETFL, 0) };
         if orig >= 0 {
+            // SAFETY: O_NONBLOCK is added to prevent blocking on terminals that don't support 16t
             unsafe { libc::fcntl(fd, libc::F_SETFL, orig | libc::O_NONBLOCK) };
         }
         orig
@@ -301,10 +282,10 @@ fn query_csi_16t() -> Option<(f64, f64)> {
         }
     }
 
-    // 恢复 stdin 为阻塞模式
     #[cfg(unix)]
     if saved_flags >= 0 {
         use std::os::unix::io::AsRawFd;
+        // SAFETY: restoring original flags (F_SETFL to saved value) — no side effects beyond reverting O_NONBLOCK
         let fd = std::io::stdin().as_raw_fd();
         unsafe { libc::fcntl(fd, libc::F_SETFL, saved_flags) };
     }
@@ -315,65 +296,39 @@ fn query_csi_16t() -> Option<(f64, f64)> {
     let p = s.find("\x1b[6;")?;
     let rest = &s[p + 3..];
     let inner = &rest[..rest.find('t')?];
-    // 兼容单分号和双分号
     let nums: Vec<u32> = inner.split(';').filter(|s| !s.is_empty()).filter_map(|s| s.parse().ok()).collect();
     let h = *nums.first()?;
     let w = *nums.get(1)?;
     Some((w as f64, h as f64))
 }
 
-// ── Sixel 高度估算 ─────────────────────────────────────
-
-/// 计算 Sixel 显示 PNG 将占据的终端行数。
-pub fn sixel_compute_height(png_bytes: &[u8], cell_w: u16) -> Result<u16, String> {
-    let img = image::ImageReader::new(Cursor::new(png_bytes))
-        .with_guessed_format()
-        .map_err(|e| format!("decode: {e}"))?
-        .decode()
-        .map_err(|e| format!("decode: {e}"))?;
-
-    let (iw, ih) = img.dimensions();
-    let scale = std::env::var("MIKUJI_SIXEL_SCALE")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(10);
-
-    let sw = cell_w as u32 * scale;
-    let sh = ((ih as f64 / iw as f64) * sw as f64 / 2.0) as u32;
-    let rows = sh as f64 / (scale as f64 * cell_aspect_ratio());
-    Ok(rows.ceil() as u16)
-}
-
 // ── Sixel 协议 ────────────────────────────────────────
 
-/// 通过 Sixel 协议显示 PNG。
-pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
+/// 通过 Sixel 协议显示 PNG，返回占用的单元格行高。
+#[must_use]
+pub(crate) fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<u16, anyhow::Error> {
     let img = image::ImageReader::new(Cursor::new(png_bytes))
-        .with_guessed_format()
-        .map_err(|e| format!("decode: {e}"))?
-        .decode()
-        .map_err(|e| format!("decode: {e}"))?;
+        .with_guessed_format().context("decode")?
+        .decode().context("decode")?;
 
     let rgba = img.to_rgba8();
-    let (iw, ih) = rgba.dimensions();
+    let (iw, ih) = (rgba.width(), rgba.height());
 
-    // 缩放到目标像素宽
     let scale = std::env::var("MIKUJI_SIXEL_SCALE")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(10);
     let sw = cell_w as u32 * scale;
     let sh = ((ih as f64 / iw as f64) * sw as f64 / 2.0) as u32;
+    let rows = (sh as f64 / (scale as f64 * cell_aspect_ratio())).ceil() as u16;
 
     let resized = image::imageops::resize(&rgba, sw, sh, image::imageops::FilterType::Lanczos3);
 
-    // 全局调色板（避免 band 间颜色不一致导致条纹）
     let q = |c: u8| -> u8 { ((c as u32 * 7 + 127) / 255 * 255 / 7) as u8 };
 
     let mut palette: Vec<(u8, u8, u8)> = Vec::new();
     let mut color_map = std::collections::HashMap::new();
 
-    // 白色作为背景色（透明区域）
     let white = (255u8, 255u8, 255u8);
     palette.push(white);
     color_map.insert(white, 0);
@@ -381,11 +336,7 @@ pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
     for y in 0..sh {
         for x in 0..sw {
             let p = resized.get_pixel(x, y);
-            let key = if p[3] < 128 {
-                white
-            } else {
-                (q(p[0]), q(p[1]), q(p[2]))
-            };
+            let key = if p[3] < 128 { white } else { (q(p[0]), q(p[1]), q(p[2])) };
             if !color_map.contains_key(&key) && palette.len() < 256 {
                 color_map.insert(key, palette.len());
                 palette.push(key);
@@ -394,17 +345,15 @@ pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
     }
 
     let mut out = std::io::stdout().lock();
-    write!(out, "\x1bP0;1q").map_err(|e| format!("sixel start: {e}"))?;
+    write!(out, "\x1bP0;1q").context("sixel start")?;
 
-    // 定义全局颜色寄存器
     for (i, &(r, g, b)) in palette.iter().enumerate() {
         let rp = (r as u32 * 100 / 255) as u8;
         let gp = (g as u32 * 100 / 255) as u8;
         let bp = (b as u32 * 100 / 255) as u8;
-        write!(out, "#{};2;{};{};{}", i, rp, gp, bp).map_err(|e| format!("sixel palette: {e}"))?;
+        write!(out, "#{};2;{};{};{}", i, rp, gp, bp).context("sixel palette")?;
     }
 
-    // 按 6 像素高度的 band 输出
     for band_y in (0..sh).step_by(6) {
         for (ci, &color) in palette.iter().enumerate() {
             let mut has_data = false;
@@ -415,36 +364,27 @@ pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
                 let mut byte: u8 = 0;
                 for dy in 0..6 {
                     let y = band_y + dy;
-                    if y >= sh {
-                        break;
-                    }
+                    if y >= sh { break; }
                     let p = resized.get_pixel(x, y);
-                    let pixel_color = if p[3] < 128 {
-                        white
-                    } else {
-                        (q(p[0]), q(p[1]), q(p[2]))
-                    };
-                    if pixel_color == color {
-                        byte |= 1 << dy;
-                    }
+                    let pixel_color = if p[3] < 128 { white } else { (q(p[0]), q(p[1]), q(p[2])) };
+                    if pixel_color == color { byte |= 1 << dy; }
                 }
 
-                // RLE 压缩
                 if byte == last_byte && run_len > 0 {
                     run_len += 1;
                 } else {
                     if run_len > 0 {
                         if !has_data {
-                            write!(out, "#{}", ci).map_err(|e| format!("sixel color: {e}"))?;
+                            write!(out, "#{}", ci).context("sixel color")?;
                             has_data = true;
                         }
                         if run_len >= 3 {
                             write!(out, "!{}{}", run_len, (last_byte + 63) as char)
-                                .map_err(|e| format!("sixel rle: {e}"))?;
+                                .context("sixel rle")?;
                         } else {
                             for _ in 0..run_len {
                                 write!(out, "{}", (last_byte + 63) as char)
-                                    .map_err(|e| format!("sixel char: {e}"))?;
+                                    .context("sixel char")?;
                             }
                         }
                     }
@@ -455,31 +395,31 @@ pub fn sixel_emit(png_bytes: &[u8], cell_w: u16) -> Result<(), String> {
 
             if run_len > 0 {
                 if !has_data {
-                    write!(out, "#{}", ci).map_err(|e| format!("sixel color: {e}"))?;
+                    write!(out, "#{}", ci).context("sixel color")?;
                 }
                 if run_len >= 3 {
                     write!(out, "!{}{}", run_len, (last_byte + 63) as char)
-                        .map_err(|e| format!("sixel rle: {e}"))?;
+                        .context("sixel rle")?;
                 } else {
                     for _ in 0..run_len {
                         write!(out, "{}", (last_byte + 63) as char)
-                            .map_err(|e| format!("sixel char: {e}"))?;
+                            .context("sixel char")?;
                     }
                 }
             }
 
             if has_data && ci + 1 < palette.len() {
-                write!(out, "$").map_err(|e| format!("sixel cr: {e}"))?;
+                write!(out, "$").context("sixel cr")?;
             }
         }
 
         if band_y + 6 < sh {
-            write!(out, "-").map_err(|e| format!("sixel lf: {e}"))?;
+            write!(out, "-").context("sixel lf")?;
         }
     }
 
-    write!(out, "\x1b\\").map_err(|e| format!("sixel end: {e}"))?;
-    out.flush().map_err(|e| format!("sixel flush: {e}"))?;
+    write!(out, "\x1b\\").context("sixel end")?;
+    out.flush().context("sixel flush")?;
 
-    Ok(())
+    Ok(rows)
 }

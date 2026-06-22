@@ -1,3 +1,4 @@
+use anyhow::Context;
 use serde::Deserialize;
 use chrono::NaiveDate;
 use rand::prelude::*;
@@ -10,15 +11,15 @@ pub struct FortuneEntry {
     pub jp_text: Vec<String>,
 }
 
-pub fn load_fortunes() -> Result<Vec<FortuneEntry>, String> {
+pub fn load_fortunes() -> anyhow::Result<Vec<FortuneEntry>> {
     let path = crate::paths::data_dir().join("data.json");
     let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("无法读取数据文件 {}: {}", path.display(), e))?;
+        .with_context(|| format!("无法读取数据文件 {}", path.display()))?;
     serde_json::from_str(&content)
-        .map_err(|e| format!("解析数据文件失败: {}", e))
+        .context("解析数据文件失败")
 }
 
-pub fn pick_by_date(entries: &[FortuneEntry], date: NaiveDate) -> FortuneEntry {
+pub(crate) fn pick_by_date(entries: &[FortuneEntry], date: NaiveDate) -> FortuneEntry {
     let y = date.format("%Y").to_string().parse::<u64>().unwrap_or(2026);
     let m = date.format("%m").to_string().parse::<u64>().unwrap_or(1);
     let d = date.format("%d").to_string().parse::<u64>().unwrap_or(1);
@@ -36,16 +37,16 @@ fn user_seed() -> u64 {
         .unwrap_or(2026)
 }
 
-pub fn pick_random(entries: &[FortuneEntry]) -> FortuneEntry {
+pub(crate) fn pick_random(entries: &[FortuneEntry]) -> FortuneEntry {
     let mut rng: StdRng = SeedableRng::from_entropy();
     entries[rng.gen_range(0..entries.len())].clone()
 }
 
-pub fn pick_by_name(entries: &[FortuneEntry], name: &str) -> Option<FortuneEntry> {
+pub(crate) fn pick_by_name(entries: &[FortuneEntry], name: &str) -> Option<FortuneEntry> {
     entries.iter().find(|e| e.name == name).cloned()
 }
 
-pub fn pick_by_number(entries: &[FortuneEntry], num: u16) -> Option<FortuneEntry> {
+pub(crate) fn pick_by_number(entries: &[FortuneEntry], num: u16) -> Option<FortuneEntry> {
     let target = num.to_string();
     entries.iter().find(|e| e.cn_text.get(1).map(|s| s.as_str()) == Some(&target)).cloned()
 }

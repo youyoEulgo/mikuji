@@ -8,7 +8,7 @@ use clap::Parser;
 use fortune::{
     FortuneEntry, load_fortunes, pick_by_date, pick_by_name, pick_by_number, pick_random,
 };
-use std::io::{self, Write as IoWrite};
+use std::io::{self, Write};
 
 fn main() {
     if let Err(e) = run() {
@@ -17,12 +17,10 @@ fn main() {
     }
 }
 
-// 图片显示宽度（列数）。直接改这个数即可。
 const IMAGE_WIDTH: u16 = 100;
-// 左侧偏移（列数）- 让图片不紧贴左边缘
 const LEFT_MARGIN: u16 = 1;
 
-fn run() -> Result<(), Box<dyn std::error::Error>> {
+fn run() -> anyhow::Result<()> {
     let cli = cli::Cli::parse();
     let entries = load_fortunes()?;
     if cli.list {
@@ -37,9 +35,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         _ => Lang::Cn,
     };
     let fortune = if let Some(n) = &cli.name {
-        pick_by_name(&entries, n).ok_or_else(|| format!("not found: {n}"))?
+        pick_by_name(&entries, n)
+            .ok_or_else(|| anyhow::anyhow!("not found: {n}"))?
     } else if let Some(num) = cli.number {
-        pick_by_number(&entries, num).ok_or_else(|| format!("签号 {num} 不存在"))?
+        pick_by_number(&entries, num)
+            .ok_or_else(|| anyhow::anyhow!("签号 {num} 不存在"))?
     } else if cli.random {
         pick_random(&entries)
     } else {
@@ -92,15 +92,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let img_h: u16 = if let Some(ref png) = png_bytes {
         match protocol {
             Some(image::Protocol::Kitty) => {
-                let size = image::measure_image(png, img_cells)?;
                 let mut out = io::stdout().lock();
                 write!(out, "\x1b[{}G", LEFT_MARGIN)?;
                 drop(out);
-                image::kitty_emit(png, img_cells, size.cell_h)?;
-                size.cell_h
+                image::kitty_emit(png, img_cells)?
             }
             Some(image::Protocol::Iterm2) => {
-                let (iip_seq, img_h) = image::iip_encode(png, img_cells)?;
+                let (iip_seq, img_h) = image::iip_emit(png, img_cells)?;
 
                 let text_rows = wrapped_lines.len() as u16;
                 // 总高度 = 图片和文字中较大的 + 1行提示
@@ -129,18 +127,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 #[cfg(unix)]
                 {
                     use std::os::unix::io::AsRawFd;
+                    // SAFETY: stdout fd is valid; ptr/len come from a live String
                     let fd = std::io::stdout().as_raw_fd();
                     let n = unsafe { libc::write(fd, full.as_ptr() as _, full.len()) };
-                    if n < 0 { return Err("libc::write failed".into()); }
+                    if n < 0 { return Err(anyhow::anyhow!("libc::write failed")); }
                 }
                 img_h
             }
             Some(image::Protocol::Sixel) => {
-                let h = image::sixel_compute_height(png, img_cells)?;
                 let mut out = io::stdout().lock();
                 write!(out, "\x1b7\x1b[{}G", LEFT_MARGIN)?;
                 drop(out);
-                image::sixel_emit(png, img_cells)?;
+                let h = image::sixel_emit(png, img_cells)?;
                 let mut out = io::stdout().lock();
                 write!(out, "\x1b8")?;
                 h

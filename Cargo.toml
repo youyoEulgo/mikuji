@@ -8,6 +8,7 @@ default = []
 force-sixel = []  # Windows Terminal 用户编译时指定
 
 [dependencies]
+anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde = { version = "1", features = ["derive"] }
@@ -15,6 +16,5 @@ serde_json = "1"
 chrono = "0.4"
 rand = "0.8"
 base64 = "0.22"
-console = "0.15"
 crossterm = "0.28"
 libc = "0.2"
