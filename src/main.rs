@@ -100,7 +100,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 size.cell_h
             }
             Some(image::Protocol::Iterm2) => {
-                eprintln!("[mikuji] 使用 iTerm2 IIP 协议");
                 let (iip_seq, img_h) = image::iip_encode(png, img_cells)?;
 
                 let text_rows = wrapped_lines.len() as u16;
@@ -121,11 +120,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 // 2. 提示
                 write!(full, "\x1b[{}G按任意键退出...", text_col).unwrap();
 
-                // 3. 回退 total 行到起始位置，叠图片
-                write!(full, "\x1b[{}A\x1b[{}G{}", total, LEFT_MARGIN, iip_seq).unwrap();
+                // 3. 回退到起始行（文字下移了 total-1 行），叠图片
+                write!(full, "\x1b[{}A\x1b[{}G{}", total - 1, LEFT_MARGIN, iip_seq).unwrap();
 
-                // 4. 光标下移 total 行，回到底部
-                write!(full, "\x1b[{}B", total).unwrap();
+                // 4. 光标下移回底部
+                write!(full, "\x1b[{}B", total - 1).unwrap();
 
                 #[cfg(unix)]
                 {
