@@ -25,32 +25,32 @@ git clone https://github.com/youyoEulgo/mikuji.git
 cd mikuji
 ```
 
-### 编译运行（开发时用）
+### 编译运行（临时使用）
 
 ```bash
-cargo run
+cargo run --bin mikuji
 ```
 
-开发时数据目录回退到 `assets/`。
-
-### 编译安装（发布用）
+### 编译安装
 
 ```bash
+# 编译
 cargo build --release
+
+# 将编译好的二进制文件放进 $PATH 环境变量可达的目录
 cp target/release/mikuji ~/.local/bin/
-```
 
-## 数据部署
-
-安装后需将签池数据和图片放到数据目录。
-
-```bash
+# 数据部署
+# 安装后需将签池数据和图片放到数据目录。
 # 创建数据目录
 mkdir -p ~/.local/share/mikuji/images
 
 # 从源码目录复制数据
 cp assets/data.json ~/.local/share/mikuji/
 cp assets/images/*.png ~/.local/share/mikuji/images/
+
+# 直接运行
+mikuji
 ```
 
 程序运行时会自动查找数据目录，优先级如下：
