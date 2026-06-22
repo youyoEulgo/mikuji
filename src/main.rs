@@ -100,34 +100,32 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 size.cell_h
             }
             Some(image::Protocol::Iterm2) => {
+                eprintln!("[mikuji] 使用 iTerm2 IIP 协议");
                 let (iip_seq, img_h) = image::iip_encode(png, img_cells)?;
 
-                // 拼接完整输出：先空足行数 → \x1b[A 回退到图片起始行 → IIP → 右侧文字
+                let text_rows = wrapped_lines.len() as u16;
+                // 总高度 = 图片和文字中较大的 + 1行提示
+                let total = img_h.max(text_rows) + 1;
+
                 let mut full = String::new();
                 use std::fmt::Write;
-                for _ in 0..img_h + 2 {
+
+                // 1. 写文字（右侧），不够 total-1 行就补空行
+                for (_row, line) in wrapped_lines.iter().enumerate() {
+                    write!(full, "\x1b[{}G{}", text_col, line).unwrap();
                     full.push('\n');
                 }
-                write!(full, "\x1b[{}A\x1b[{}G", img_h + 2, LEFT_MARGIN + 1).unwrap();
-                full.push_str(&iip_seq);
-                // 文字在右侧
-                for (row, line) in wrapped_lines.iter().enumerate() {
-                    if row == 0 {
-                        write!(full, "\x1b[{}G{}", text_col, line).unwrap();
-                    } else {
-                        full.push('\n');
-                        write!(full, "\x1b[{}G{}", text_col, line).unwrap();
-                    }
+                for _ in text_rows..total - 1 {
+                    full.push('\n');
                 }
-                // 补空行，确保文字结束时不低于图片底部
-                let text_rows = wrapped_lines.len() as u16;
-                if img_h > text_rows {
-                    for _ in 0..(img_h - text_rows + 1) {
-                        full.push('\n');
-                    }
-                }
-                full.push('\n');
+                // 2. 提示
                 write!(full, "\x1b[{}G按任意键退出...", text_col).unwrap();
+
+                // 3. 回退 total 行到起始位置，叠图片
+                write!(full, "\x1b[{}A\x1b[{}G{}", total, LEFT_MARGIN, iip_seq).unwrap();
+
+                // 4. 光标下移 total 行，回到底部
+                write!(full, "\x1b[{}B", total).unwrap();
 
                 #[cfg(unix)]
                 {

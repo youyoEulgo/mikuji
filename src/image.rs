@@ -204,9 +204,16 @@ static CELL_PX_H: AtomicU64 = AtomicU64::new(0);
 /// 通过 CSI 16t 查询终端真实单元格像素尺寸并缓存。
 /// 查询失败时保持默认值 10px/col, 20px/row（ratio=2.0）。
 pub fn init_cell_px() {
+    // Priority 1: ioctl(TIOCGWINSZ) — yazi 同款方案
+    if let Some((w, h)) = query_ioctl_winsize() {
+        CELL_PX_W.store(w.clamp(5.0, 30.0).to_bits(), Ordering::Release);
+        CELL_PX_H.store(h.clamp(10.0, 60.0).to_bits(), Ordering::Release);
+        return;
+    }
+    // Priority 2: CSI 16t
     if let Some((w, h)) = query_csi_16t() {
-        CELL_PX_W.store((w.clamp(5.0, 30.0)).to_bits(), Ordering::Release);
-        CELL_PX_H.store((h.clamp(10.0, 60.0)).to_bits(), Ordering::Release);
+        CELL_PX_W.store(w.clamp(5.0, 30.0).to_bits(), Ordering::Release);
+        CELL_PX_H.store(h.clamp(10.0, 60.0).to_bits(), Ordering::Release);
     }
 }
 
@@ -229,6 +236,29 @@ pub fn cell_aspect_ratio() -> f64 {
     }
 }
 
+/// 通过 ioctl(TIOCGWINSZ) 获取终端窗口总像素，除以行列数得单元格像素。
+/// yazi 的同款方案。macOS iTerm2 / Linux 绝大多数终端可用。
+fn query_ioctl_winsize() -> Option<(f64, f64)> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::AsRawFd;
+        let fd = std::io::stdout().as_raw_fd();
+        let mut ws: libc::winsize = unsafe { std::mem::zeroed() };
+        if unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, &mut ws) } == 0
+            && ws.ws_xpixel > 0
+            && ws.ws_ypixel > 0
+            && ws.ws_col > 0
+            && ws.ws_row > 0
+        {
+            return Some((
+                ws.ws_xpixel as f64 / ws.ws_col as f64,
+                ws.ws_ypixel as f64 / ws.ws_row as f64,
+            ));
+        }
+    }
+    None
+}
+
 /// 发送 CSI 16t 查询，解析终端返回的单元格像素尺寸。
 ///
 /// WezTerm 的响应格式为 `\x1b[6;;30;15t`（双分号），
@@ -236,6 +266,19 @@ pub fn cell_aspect_ratio() -> f64 {
 /// 返回 (px_per_col, px_per_row)。
 fn query_csi_16t() -> Option<(f64, f64)> {
     crossterm::terminal::enable_raw_mode().ok()?;
+
+    // 暂存并设 stdin 为非阻塞，防止不支持 16t 的终端永久阻塞
+    #[cfg(unix)]
+    let saved_flags = {
+        use std::os::unix::io::AsRawFd;
+        let fd = std::io::stdin().as_raw_fd();
+        let orig = unsafe { libc::fcntl(fd, libc::F_GETFL, 0) };
+        if orig >= 0 {
+            unsafe { libc::fcntl(fd, libc::F_SETFL, orig | libc::O_NONBLOCK) };
+        }
+        orig
+    };
+
     let mut out = std::io::stdout().lock();
     write!(out, "\x1b[s\x1b[16t\x1b[u").ok()?;
     out.flush().ok()?;
@@ -257,6 +300,15 @@ fn query_csi_16t() -> Option<(f64, f64)> {
             _ => std::thread::sleep(std::time::Duration::from_millis(10)),
         }
     }
+
+    // 恢复 stdin 为阻塞模式
+    #[cfg(unix)]
+    if saved_flags >= 0 {
+        use std::os::unix::io::AsRawFd;
+        let fd = std::io::stdin().as_raw_fd();
+        unsafe { libc::fcntl(fd, libc::F_SETFL, saved_flags) };
+    }
+
     crossterm::terminal::disable_raw_mode().ok()?;
 
     let s = String::from_utf8_lossy(&buf);
