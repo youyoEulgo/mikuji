@@ -1,6 +1,6 @@
 # mikuji
 
-东方主题每日御神签。终端内显示角色立绘、诗歌、运势与评论。
+东方主题每日御神签。
 
 ![mikuji 截图](mikuji.png)
 
@@ -31,7 +31,7 @@ cd mikuji
 cargo run
 ```
 
-开发时数据目录回退到 `assets/`，无需额外配置。
+开发时数据目录回退到 `assets/`。
 
 ### 编译安装（发布用）
 
@@ -39,15 +39,6 @@ cargo run
 cargo build --release
 cp target/release/mikuji ~/.local/bin/
 ```
-
-**Windows Terminal 用户**：编译时指定使用 Sixel 协议。WSL 中默认自动走 Sixel。
-
-```bash
-cargo build --release --features force-sixel
-cp target/release/mikuji ~/.local/bin/
-```
-
-这样编译出的二进制会固定使用 Sixel，无需设置环境变量。
 
 ## 数据部署
 
@@ -85,34 +76,27 @@ Windows 下默认 `%LOCALAPPDATA%\mikuji\`。
 
 ## 终端兼容性
 
-协议检测全自动，无需用户关心。当前支持以下终端：
+| 终端                     | 协议                    |
+| ------------------------ | ----------------------- |
+| WezTerm, iTerm2          | iTerm2 (OSC 1337)       |
+| Kitty, Ghostty, Konsole  | Kitty Graphics Protocol |
+| Windows Terminal, foot   | Sixel                   |
+| xterm (部分), 原生 Linux | Kitty                   |
 
-| 终端 | 协议 |
-|------|------|
-| WezTerm, iTerm2 | iTerm2 (OSC 1337) |
-| Kitty, Ghostty, Konsole | Kitty Graphics Protocol |
-| Windows Terminal, foot | Sixel |
-| xterm (部分), 原生 Linux | Kitty |
-
-启动时通过环境变量识别终端品牌，并查询 CSI 16t 获取像素尺寸用于图片缩放。
 终端不支持图片时图片区域为空，文字正常显示。
 
 ### 手动指定协议
 
-```bash
-MIKUJI_PROTOCOL=iterm2 mikuji   # iTerm2 协议
-MIKUJI_PROTOCOL=kitty mikuji    # Kitty 协议
-MIKUJI_PROTOCOL=sixel mikuji    # Sixel 协议
-MIKUJI_PROTOCOL=none mikuji     # 禁用图片
-```
-
-或编译时指定：
+协议检测在绝大多数终端上自动进行，若自动检测失败或结果不符合预期：
 
 ```bash
-cargo build --release --features force-sixel   # 固定 Sixel
+MIKUJI_PROTOCOL=sixel mikuji     # 每次运行时指定
+export MIKUJI_PROTOCOL=sixel     # 或设为永久环境变量
 ```
 
-或设置永久环境变量：`export MIKUJI_PROTOCOL=sixel`。
+支持的取值：`kitty` / `iterm2` / `sixel` / `none`。
+
+编译时选项 `--features force-sixel` 供无法正确检测协议的终端强制使用 Sixel，非必要不推荐。
 
 ## 用法
 
@@ -129,22 +113,9 @@ mikuji -w 120             # 指定终端宽度
 
 默认抽取的种子由 **日期 + 编译时随机数** 混合而成。同一个人同一天结果固定，不同人编译出来的二进制结果不同。`--date` 用于回看特定日期的签（含编译种子的固定结果）。
 
-## 图片宽度
-
-编辑 `src/main.rs` 开头的常量：
-
-```rust
-const IMAGE_WIDTH: u16 = 100;
-```
-
-修改后重新编译。图片宽度不会超过终端宽度的 1/3。
-
-终端单元格的像素尺寸通过 CSI 16t 自动查询（`init_cell_px`），图片据此
-缩放到精确匹配字符列宽的像素尺寸。如果查询失败，回退到默认 10px/列。
-
 ## 自定义签池
 
-用自己的 `data.json` 替换默认签池。格式：
+用自己的 `data.json` 和图片替换默认签池。格式：
 
 ```json
 [
@@ -193,6 +164,7 @@ const IMAGE_WIDTH: u16 = 100;
   }
 ]
 ```
+图片文件名需要与 `name` 字段内容保持一致。
 
 **块结构：**
 
@@ -212,8 +184,8 @@ const IMAGE_WIDTH: u16 = 100;
 
 ### 吉凶等级颜色
 
-| 颜色    | 关键词                                                              |
-| ------- | ------------------------------------------------------------------- |
+| 颜色   | 关键词                                                              |
+| ------ | ------------------------------------------------------------------- |
 | 🔴 红   | `大吉` `超大吉` `最大吉` `大大吉` `大々吉` `吉` `奇迹☆` `ミラクル☆` |
 | 🔴 亮红 | `中吉` `小吉` `小小吉` `小々吉`                                     |
 | 🟡 黄   | `末吉` `半吉`                                                       |
