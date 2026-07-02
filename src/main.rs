@@ -101,28 +101,22 @@ fn run() -> anyhow::Result<()> {
                 let (iip_seq, img_h) = image::iip_emit(png, img_cells)?;
 
                 let text_rows = wrapped_lines.len() as u16;
-                // 总高度 = 图片和文字中较大的 + 1行提示
-                let total = img_h.max(text_rows) + 1;
+                let total = img_h.max(text_rows);
 
                 let mut full = String::new();
                 use std::fmt::Write;
 
-                // 1. 写文字（右侧），不够 total-1 行就补空行
                 for (_row, line) in wrapped_lines.iter().enumerate() {
                     write!(full, "\x1b[{}G{}", text_col, line).unwrap();
                     full.push('\n');
                 }
-                for _ in text_rows..total - 1 {
+                for _ in text_rows..total {
                     full.push('\n');
                 }
-                // 2. 提示
-                write!(full, "\x1b[{}G按任意键退出...", text_col).unwrap();
-
-                // 3. 回退到起始行（文字下移了 total-1 行），叠图片
-                write!(full, "\x1b[{}A\x1b[{}G{}", total - 1, LEFT_MARGIN, iip_seq).unwrap();
-
-                // 4. 光标下移回底部
-                write!(full, "\x1b[{}B", total - 1).unwrap();
+                // 回退到起始行，叠图片
+                write!(full, "\x1b[{}A\x1b[{}G{}", total, LEFT_MARGIN, iip_seq).unwrap();
+                // 光标下移回底部
+                write!(full, "\x1b[{}B", total).unwrap();
 
                 #[cfg(unix)]
                 {
@@ -155,7 +149,6 @@ fn run() -> anyhow::Result<()> {
         // ── 3. 输出文字 ──
         let mut out = io::stdout().lock();
 
-        // 图片比文字高时补空行
         if img_h > text_rows {
             for _ in 0..(img_h - text_rows + 1) {
                 wrapped_lines.push(String::new());
@@ -169,28 +162,9 @@ fn run() -> anyhow::Result<()> {
             }
             write!(out, "\x1b[{}G{}", text_col, line)?;
         }
-
-        write!(out, "\n按任意键退出...")?;
+        writeln!(out)?;
         out.flush()?;
-        drop(out);
     }
-
-    // 用 crossterm 事件读取按键，忽略 Kitty 响应等非按键事件
-    crossterm::terminal::enable_raw_mode()?;
-    loop {
-        match crossterm::event::read()? {
-            crossterm::event::Event::Key(k) => {
-                use crossterm::event::KeyCode;
-                match k.code {
-                    KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown
-                    | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End => {}
-                    _ => break,
-                }
-            }
-            _ => {} // 忽略 Mouse, Resize 等
-        }
-    }
-    crossterm::terminal::disable_raw_mode()?;
 
     Ok(())
 }
