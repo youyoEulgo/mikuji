@@ -1,4 +1,4 @@
-// IIP 布局测试 — 先文字再图片，doNotMoveCursor=1
+// IIP 布局测试 — Python 验证通过方案：估算 img_h → 预分配 → 写文字 → 叠图
 // cargo run --bin test_iip
 
 use image::ImageEncoder;
@@ -13,7 +13,8 @@ fn main() {
     let text_col = left_margin + img_cells + 3;
     let text_max_w = tw.saturating_sub(text_col) as usize;
 
-    let px_per_col = {
+    let (px_per_col, px_per_row) = {
+        // SAFETY: stdout fd is always valid; winsize is POD, zeroed, and only read by ioctl
         #[cfg(unix)]
         {
             use std::os::unix::io::AsRawFd;
@@ -21,16 +22,21 @@ fn main() {
             let mut ws: libc::winsize = unsafe { std::mem::zeroed() };
             if unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, &mut ws) } == 0
                 && ws.ws_xpixel > 0
+                && ws.ws_ypixel > 0
                 && ws.ws_col > 0
+                && ws.ws_row > 0
             {
-                ws.ws_xpixel as f64 / ws.ws_col as f64
+                (
+                    ws.ws_xpixel as f64 / ws.ws_col as f64,
+                    ws.ws_ypixel as f64 / ws.ws_row as f64,
+                )
             } else {
-                10.0
+                (16.0, 34.0)
             }
         }
         #[cfg(not(unix))]
         {
-            10.0
+            (16.0, 34.0)
         }
     };
 
@@ -43,6 +49,7 @@ fn main() {
     let (iw, ih) = (rgba.width(), rgba.height());
     let target_w = img_cells as u32 * px_per_col as u32;
     let target_h = (target_w as u64 * ih as u64 / iw as u64) as u32;
+    let img_h = (target_h as f64 / px_per_row + 0.5) as u16;
 
     let resized = image::imageops::resize(
         &rgba,
@@ -88,61 +95,63 @@ fn main() {
     let cm: Vec<_> = comm_b.iter().skip(1).collect();
     let ar = art_b.first().map(|s| s.as_str()).unwrap_or("");
 
-    let mut lines: Vec<String> = Vec::new();
-    let (w, c, y, g, d, b, i, rst, r) = (
-        "\x1b[37m", "\x1b[36m", "\x1b[33m", "\x1b[32m", "\x1b[90m", "\x1b[1m", "\x1b[3m",
-        "\x1b[0m", "\x1b[31m",
-    );
+    let mut lines: Vec<String> = Vec::with_capacity(35);
     if !ls.is_empty() {
         lines.push(format!(
-            "{w}{num}  \x1b[90m\x1b[9m{ls}{rst}  {r}{b}【{lr}】{rst}"
+            "\x1b[37m{num}  \x1b[90m\x1b[9m{ls}\x1b[0m  \x1b[31m\x1b[1m【{lr}】\x1b[0m"
         ));
     } else {
-        lines.push(format!("{w}{num}  {r}{b}【{lr}】{rst}"));
+        lines.push(format!("\x1b[37m{num}  \x1b[31m\x1b[1m【{lr}】\x1b[0m"));
     }
-    lines.push(format!("{c}{ti}{rst}"));
-    lines.push(format!("{y}{b}{nm}{rst}"));
-    lines.push(format!("{w}{ab}{rst}"));
+    lines.push(format!("\x1b[36m{ti}\x1b[0m"));
+    lines.push(format!("\x1b[33m\x1b[1m{nm}\x1b[0m"));
+    lines.push(format!("\x1b[37m{ab}\x1b[0m"));
     lines.push(String::new());
-    lines.push(format!("{d}──{rst}"));
+    lines.push(format!("\x1b[90m──\x1b[0m"));
     for l in &pm {
-        lines.push(format!("  {w}{i}{l}{rst}"));
+        lines.push(format!("  \x1b[37m\x1b[3m{l}\x1b[0m"));
     }
     if !pm.is_empty() && !ft.is_empty() {
         lines.push(String::new());
     }
     for l in &ft {
-        lines.push(format!("  {g}{l}{rst}"));
+        lines.push(format!("  \x1b[32m{l}\x1b[0m"));
     }
     if !cm.is_empty() {
         lines.push(String::new());
-        lines.push(format!("  {d}── {cs} 评论 ──{rst}"));
+        lines.push(format!("  \x1b[90m── {cs} 评论 ──\x1b[0m"));
         for l in &cm {
-            lines.push(format!("  {d}{l}{rst}"));
+            lines.push(format!("  \x1b[90m{l}\x1b[0m"));
         }
     }
     lines.push(String::new());
     if !ar.is_empty() {
-        lines.push(format!("{d}{i}{ar}{rst}"));
+        lines.push(format!("\x1b[90m\x1b[3m{ar}\x1b[0m"));
     }
 
     let wrapped: Vec<String> = lines
         .iter()
         .flat_map(|l| wrap_line(l, text_max_w))
         .collect();
-    let text_rows = wrapped.len();
-    eprintln!("text_rows={text_rows}");
+    let text_rows = wrapped.len() as u16;
 
-    // 写文字 → 回退 → 叠图 → 归位（和 Python 脚本对齐）
+    eprintln!(
+        "px_col={px_per_col:.1} px_row={px_per_row:.1} 图片{target_w}x{target_h}px = {img_h}行  文字={text_rows}行"
+    );
+
+    // 先图(doNotMoveCursor=1, 光标不动) → 文字 → 补空行到图片底部
     let mut out = String::new();
-    writeln!(out).unwrap();
 
+    write!(out, "\x1b[{left_margin}G{iip}").unwrap();
     for line in &wrapped {
         write!(out, "\x1b[{text_col}G{line}").unwrap();
         out.push('\n');
     }
-    write!(out, "\x1b[{text_rows}A\x1b[{left_margin}G{iip}").unwrap();
-    write!(out, "\x1b[{text_rows}B").unwrap();
+    if img_h > text_rows {
+        for _ in text_rows..img_h {
+            out.push('\n');
+        }
+    }
 
     #[cfg(unix)]
     {
