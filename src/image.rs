@@ -100,7 +100,7 @@ pub(crate) fn iip_emit(png_bytes: &[u8], cell_w: u16) -> Result<(String, u16), a
     base64::engine::general_purpose::STANDARD.encode_string(&png_buf, &mut seq);
     write!(seq, "\x07").context("iip term")?;
 
-    let cell_h = (target_h as f64 / cell_aspect_ratio() / px).ceil() as u16;
+    let cell_h = (target_h as f64 / px_per_row() + 0.5) as u16;
     Ok((seq, cell_h.max(1)))
 }
 
@@ -325,6 +325,12 @@ pub(crate) fn px_per_col() -> f64 {
     if bits == 0 { 10.0 } else { f64::from_bits(bits) }
 }
 
+/// 终端每行对应的像素高度。
+/// CSI 16t 查询失败时回退到 20px。
+pub(crate) fn px_per_row() -> f64 {
+    let bits = CELL_PX_H.load(Ordering::Acquire);
+    if bits == 0 { 20.0 } else { f64::from_bits(bits) }
+}
 /// 终端单元格高宽比 (height / width)。
 /// CSI 16t 查询失败时回退到 2.0。
 pub(crate) fn cell_aspect_ratio() -> f64 {

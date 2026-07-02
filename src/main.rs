@@ -99,24 +99,23 @@ fn run() -> anyhow::Result<()> {
             }
             Some(image::Protocol::Iterm2) => {
                 let (iip_seq, img_h) = image::iip_emit(png, img_cells)?;
-
                 let text_rows = wrapped_lines.len() as u16;
-                let total = img_h.max(text_rows);
 
                 let mut full = String::new();
                 use std::fmt::Write;
 
-                for (_row, line) in wrapped_lines.iter().enumerate() {
+                // 先图 → 手动回退 → 文字 → 补空行
+                write!(full, "\x1b[{}G{}", LEFT_MARGIN, iip_seq).unwrap();
+                write!(full, "\x1b[{}A", img_h).unwrap();
+                for line in &wrapped_lines {
                     write!(full, "\x1b[{}G{}", text_col, line).unwrap();
                     full.push('\n');
                 }
-                for _ in text_rows..total {
-                    full.push('\n');
+                if img_h > text_rows {
+                    for _ in text_rows..img_h {
+                        full.push('\n');
+                    }
                 }
-                // 回退到起始行，叠图片
-                write!(full, "\x1b[{}A\x1b[{}G{}", total, LEFT_MARGIN, iip_seq).unwrap();
-                // 光标下移回底部
-                write!(full, "\x1b[{}B", total).unwrap();
 
                 #[cfg(unix)]
                 {
