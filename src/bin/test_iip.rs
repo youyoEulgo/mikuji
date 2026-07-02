@@ -139,10 +139,11 @@ fn main() {
         "px_col={px_per_col:.1} px_row={px_per_row:.1} 图片{target_w}x{target_h}px = {img_h}行  文字={text_rows}行"
     );
 
-    // 先图(doNotMoveCursor=1, 光标不动) → 文字 → 补空行到图片底部
+    // 先图(doNotMoveCursor=1) → 手动回退 img_h 行 → 文字 → 补空行
     let mut out = String::new();
 
     write!(out, "\x1b[{left_margin}G{iip}").unwrap();
+    write!(out, "\x1b[{img_h}A").unwrap();
     for line in &wrapped {
         write!(out, "\x1b[{text_col}G{line}").unwrap();
         out.push('\n');
