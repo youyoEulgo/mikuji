@@ -29,12 +29,18 @@ pub(crate) fn pick_by_date(entries: &[FortuneEntry], date: NaiveDate) -> Fortune
     entries[rng.gen_range(0..entries.len())].clone()
 }
 
-/// 编译时生成的用户种子。同一个人同一天结果固定，不同人不同。
+/// 运行时用户种子。首次运行时在数据目录生成并持久化，
+/// 后续运行复用同一文件，保证同用户同日期结果固定。
 fn user_seed() -> u64 {
-    include_str!(concat!(env!("OUT_DIR"), "/user_seed.txt"))
-        .trim()
-        .parse()
-        .unwrap_or(2026)
+    let path = crate::paths::data_dir().join("user_seed.txt");
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        if let Ok(seed) = content.trim().parse::<u64>() {
+            return seed;
+        }
+    }
+    let seed: u64 = rand::rngs::StdRng::from_entropy().r#gen();
+    let _ = std::fs::write(&path, seed.to_string());
+    seed
 }
 
 pub(crate) fn pick_random(entries: &[FortuneEntry]) -> FortuneEntry {
