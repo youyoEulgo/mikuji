@@ -14,7 +14,6 @@
 需要 Rust 工具链。如未安装：
 
 - **Linux / macOS**: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
-- **Windows**: 前往 [rustup.rs](https://rustup.rs/) 下载安装器
 
 或参考 [Rust 官方安装指南](https://www.rust-lang.org/zh-CN/tools/install)。
 
@@ -59,12 +58,9 @@ mikuji
 | ---- | ----------------------- | ----------------------------------- |
 | 1    | `$MIKUJI_DATA_DIR`      | 环境变量，完全自定义                |
 | 2    | `$XDG_DATA_HOME/mikuji` | XDG 规范                            |
-| 3    | `%LOCALAPPDATA%\mikuji` | Windows（若存在）                   |
-| 4    | `~/.local/share/mikuji` | 默认数据目录（Linux/macOS，若存在） |
-| 5    | `assets/`               | 开发时项目目录回退（若存在）        |
-| 6    | `~/.local/share/mikuji` | 默认值                              |
-
-Windows 下默认 `%LOCALAPPDATA%\mikuji\`。
+| 3    | `~/.local/share/mikuji` | 默认数据目录（Linux/macOS，若存在） |
+| 4    | `assets/`               | 开发时项目目录回退（若存在）        |
+| 5    | `~/.local/share/mikuji` | 默认值                              |
 
 数据目录结构：
 
@@ -209,15 +205,14 @@ language = "cn"        # 默认语言
 
 未配置的项使用默认值。不要随便删除 `user_seed.txt`，否则命数皆变。
 
-## 编译种子
+## 用户种子
 
-每次 `cargo build` 会在 `build.rs` 中生成一个随机种子（纳秒时间戳 XOR 进程 PID），与日期混合。这意味着：
+首次运行时会自动在数据目录生成 `user_seed.txt`，此后固定复用。这意味着：
 
-- 你编译出来的二进制跟别人不一样，同一天各人结果不同
-- 你自己的二进制同一天结果固定
-- 重新编译后种子会变，历史结果不复现
-- `-r` / `--random` 不依赖种子，每次真随机
-- 可通过 `MIKUJI_SEED` 环境变量手动固定种子值
+- 每个用户首次运行时生成独立种子，不同人结果不同
+- 删除种子文件后下次运行会自动重新生成（结果会变）
+- 发布预编译二进制不受影响——每个用户首次运行各自获得独立种子
+- `-r` / `--random` 不依赖用户种子，每次真随机
 
 ## 许可
 
