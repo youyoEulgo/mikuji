@@ -80,7 +80,7 @@ mikuji 一键安装脚本（Linux / macOS）
 
 常用:
   --no-images            不安装立绘（省约 224 MB，只显示文字）
-  --version <tag>        指定二进制版本，如 v0.5.0（默认取最新 release）
+  --version <tag>        指定二进制版本，如 v0.5.1（默认取最新 release）
   --data-version <tag>   指定签池数据 tag（默认内置的 data-v1）
   --force                强制重新下载并安装（忽略"已是最新"）
   --no-path              不修改 shell 配置，只打印需要手动执行的命令

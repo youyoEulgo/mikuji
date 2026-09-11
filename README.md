@@ -27,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/youyoEulgo/mikuji/master/scripts/in
 安装完成后重开终端（或按脚本提示先 `export PATH=...`），运行 `mikuji`。
 
 > 立绘约 224 MB。只看文字签文可加 `--no-images`，只装 292 KB 的 `data.json`，签文与有图时完全一致。
-> 网络慢可用 `MIKUJI_BASE_URL` 指向镜像/代理；需要固定版本用 `--version v0.5.0`。
+> 网络慢可用 `MIKUJI_BASE_URL` 指向镜像/代理；需要固定版本用 `--version v0.5.1`。
 
 ### 安装选项
 
