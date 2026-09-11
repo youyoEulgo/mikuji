@@ -1,0 +1,114 @@
+name: Data release
+
+# 签池数据独立于二进制版本发布，tag 形如 data-v1。
+# 二进制包与数据包解耦后，升级二进制不再重下约 224 MB 的立绘。
+#
+# 发布方式：
+#   git tag data-v1 && git push origin data-v1
+# 或在 Actions 面板手动触发并填写 data_tag。
+on:
+  push:
+    tags:
+      - 'data-*'
+  workflow_dispatch:
+    inputs:
+      data_tag:
+        description: '数据 tag，例如 data-v1（将基于当前 ref 创建该 tag 的 release）'
+        required: true
+        default: data-v1
+
+permissions:
+  contents: write
+
+env:
+  COPYFILE_DISABLE: 1
+
+jobs:
+  package:
+    name: Package data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve tag
+        id: tag
+        env:
+          # 经 env 传入，避免把 workflow_dispatch 输入直接插进 shell。
+          DATA_TAG: ${{ inputs.data_tag }}
+        run: |
+          set -euo pipefail
+          tag="${DATA_TAG:-${GITHUB_REF_NAME}}"
+          case "$tag" in
+            data-*) ;;
+            *)
+              echo "数据 tag 必须以 data- 开头，收到: $tag" >&2
+              exit 1
+              ;;
+          esac
+          # install.sh 用 ${BASE_URL}/${tag}/mikuji-${tag}.tar.gz 取数据包。
+          echo "tag=${tag}" >>"$GITHUB_OUTPUT"
+          echo "name=mikuji-${tag}" >>"$GITHUB_OUTPUT"
+
+      - name: Sanity check the pool
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+
+          entries = json.load(open("assets/data.json"))
+          if not entries:
+              raise SystemExit("assets/data.json 为空")
+          print(f"签池条数: {len(entries)}")
+          PY
+          count=$(find assets/images -maxdepth 1 -type f -name '*.png' ! -name '._*' | wc -l)
+          printf '立绘数量: %s\n' "$count"
+          [ "$count" -gt 0 ]
+
+      - name: Package the data
+        run: |
+          set -euo pipefail
+          name='${{ steps.tag.outputs.name }}'
+          mkdir -p "package/${name}/images"
+          cp assets/data.json "package/${name}/data.json"
+          # PNG 已压缩，这里只做归档；同时排除 macOS 元数据文件。
+          find assets/images -maxdepth 1 -type f -name '*.png' ! -name '._*' \
+            -exec cp {} "package/${name}/images/" \;
+          count=$(find "package/${name}/images" -type f | wc -l)
+          [ "$count" -gt 0 ] || { echo "没有可用立绘" >&2; exit 1; }
+          printf '打包立绘: %s 张\n' "$count"
+          tar -czf "${name}.tar.gz" -C package "${name}"
+          # 纯文字安装（install.sh --no-images）只下这个约 292 KB 的资产。
+          cp assets/data.json "${name}.json"
+          sha256sum "${name}.tar.gz" "${name}.json" >checksums.txt
+          tar -tzf "${name}.tar.gz" | head -5
+          ls -lh "${name}.tar.gz" "${name}.json" checksums.txt
+
+      - name: Create data release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          # 关键：数据 release 不能被标成 Latest，否则 install.sh 解析
+          # /releases/latest 时会拿到数据 tag 而不是最新版本 tag。
+          make_latest: false
+          generate_release_notes: false
+          body: |
+            签池数据包 `${{ steps.tag.outputs.name }}.tar.gz`，内容为 `data.json` 与全部立绘。
+            另附 `${{ steps.tag.outputs.name }}.json`（仅 `data.json`，约 292 KB），供 `install.sh --no-images` 使用。
+
+            安装或升级 mikuji 时由 `scripts/install.sh` 自动下载，无需手动解压。
+            数据目录结构：
+
+            ```
+            ~/.local/share/mikuji/
+            ├── data.json
+            └── images/*.png
+            ```
+
+            图片版权归 ZUN / 上海爱丽丝幻乐团与 KADOKAWA 所有，请勿商用。
+          files: |
+            mikuji-data-*.tar.gz
+            mikuji-data-*.json
+            checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

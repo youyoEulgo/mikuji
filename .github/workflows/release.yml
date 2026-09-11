@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # macOS 打包时不生成 AppleDouble（._*）文件。
+  COPYFILE_DISABLE: 1
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux 用 musl 静态链接，不依赖目标机 glibc 版本。
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+          - target: aarch64-apple-darwin
+            os: macos-14
+          # Intel Mac：macos-13 已被 GitHub 下线，改用 macos-15-intel。
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install musl toolchain
+        if: contains(matrix.target, 'linux-musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Lint the installer
+        run: |
+          set -euo pipefail
+          sh -n scripts/install.sh
+          sh -n scripts/install_test.sh
+
+      - name: Build the binary
+        run: cargo build --release --locked --target ${{ matrix.target }} --bin mikuji
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="mikuji-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir -p "package/${name}"
+          cp "target/${{ matrix.target }}/release/mikuji" "package/${name}/mikuji"
+          chmod 0755 "package/${name}/mikuji"
+          cp README.md LICENSE "package/${name}/"
+          cp scripts/install.sh "package/${name}/install.sh"
+          chmod 0755 "package/${name}/install.sh"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            # bsdtar 支持 --no-xattrs；GNU tar 不需要该参数。
+            tar --no-xattrs -czf "${name}.tar.gz" -C package "${name}"
+          else
+            tar -czf "${name}.tar.gz" -C package "${name}"
+          fi
+          echo "--- ${name}.tar.gz ---"
+          tar -tzvf "${name}.tar.gz"
+          ls -lh "${name}.tar.gz"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: mikuji-*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          cd artifacts
+          sha256sum mikuji-*.tar.gz > checksums.txt
+          cat checksums.txt
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build and installer self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --locked --bin mikuji
+
+      - name: Syntax-check the installer
+        run: |
+          set -euo pipefail
+          sh -n scripts/install.sh
+          sh -n scripts/install_test.sh
+
+      - name: ShellCheck (informational)
+        continue-on-error: true
+        run: shellcheck -s sh scripts/install.sh scripts/install_test.sh
+
+      # 用本地 HTTP 服务 + 伪造 release 覆盖安装器各分支，不访问 GitHub。
+      - name: Installer self-test
+        run: sh scripts/install_test.sh

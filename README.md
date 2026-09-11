@@ -9,7 +9,69 @@
 
 ## 安装
 
-### 前置条件
+仅支持 **Linux 与 macOS**。
+
+### 一键安装（推荐）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/youyoEulgo/mikuji/master/scripts/install.sh | sh
+```
+
+脚本会下载对应平台的预编译二进制（Linux 为 musl 静态链接）与签池数据：
+
+| 内容     | 默认位置                                                     |
+| -------- | ------------------------------------------------------------ |
+| 二进制   | `${XDG_BIN_HOME:-~/.local/bin}/mikuji`                       |
+| 签池数据 | `${MIKUJI_DATA_DIR:-${XDG_DATA_HOME:-~/.local/share}/mikuji}` |
+
+安装完成后重开终端（或按脚本提示先 `export PATH=...`），运行 `mikuji`。
+
+> 立绘约 224 MB。只看文字签文可加 `--no-images`，只装 292 KB 的 `data.json`，签文与有图时完全一致。
+> 网络慢可用 `MIKUJI_BASE_URL` 指向镜像/代理；需要固定版本用 `--version v0.5.0`。
+
+### 安装选项
+
+| 选项                                      | 说明                                          |
+| ----------------------------------------- | --------------------------------------------- |
+| `--no-images`                             | 不装立绘，仅 `data.json`（约省 224 MB）       |
+| `--version <tag>`                         | 指定二进制版本，默认取最新 release            |
+| `--data-version <tag>`                    | 指定签池数据 tag，默认 `data-v1`              |
+| `--force`                                 | 忽略“已是最新”，强制重新下载安装              |
+| `--skip-data`                             | 只装二进制，稍后自行部署数据                  |
+| `--no-path`                               | 不改 shell 配置，只打印需要手动执行的命令     |
+| `--quiet`                                 | 只输出最终结果                                |
+| `--uninstall`                             | 卸载二进制，保留签池数据与用户种子            |
+| `--purge`                                 | 配合 `--uninstall` 删除数据目录（需确认）     |
+| `--reset-seed`                            | 删除 `user_seed.txt`（签运会改变，需确认）    |
+| `--from-source`                           | `cargo install --git` 从源码编译（需 Rust）   |
+| `--base-url <url>`                        | Release 下载前缀，用于镜像/代理               |
+| `--install-dir <dir>` / `--data-dir <dir>` | 自定义安装目录 / 数据目录                    |
+| `--help`                                  | 完整帮助                                      |
+
+同名环境变量亦可使用：`MIKUJI_VERSION`、`MIKUJI_DATA_VERSION`、`MIKUJI_BASE_URL`、`MIKUJI_INSTALL_DIR`、`MIKUJI_DATA_DIR`、`MIKUJI_NO_IMAGES`、`MIKUJI_SKIP_DATA`、`MIKUJI_FORCE`、`MIKUJI_NO_PATH`、`MIKUJI_NO_VERIFY`、`MIKUJI_YES`、`MIKUJI_QUIET`。
+
+脚本会校验 release 附带的 `checksums.txt`（SHA-256）。下载失败、校验不通过都不会留下半截数据。
+
+### 升级与卸载
+
+重复执行同一条安装命令即为升级。签池数据版本未变时只重新下载二进制（约 3 MB），不会重复拉取 224 MB 立绘。
+
+```bash
+# 升级到最新版
+curl -fsSL https://raw.githubusercontent.com/youyoEulgo/mikuji/master/scripts/install.sh | sh
+
+# 卸载（保留签池数据与用户种子）
+curl -fsSL https://raw.githubusercontent.com/youyoEulgo/mikuji/master/scripts/install.sh | sh -s -- --uninstall
+
+# 重置签运（删除 user_seed.txt，交互确认）
+curl -fsSL https://raw.githubusercontent.com/youyoEulgo/mikuji/master/scripts/install.sh | sh -s -- --reset-seed
+```
+
+升级只覆盖 `data.json` 与 `images/`，**不会**覆盖 `user_seed.txt` 与 `config.toml`。
+
+也可以在解压后的发布包里直接执行自带的 `install.sh`：包内已有二进制与数据时不需要网络。
+
+### 从源码安装
 
 需要 Rust 工具链。如未安装：
 
@@ -17,40 +79,28 @@
 
 或参考 [Rust 官方安装指南](https://www.rust-lang.org/zh-CN/tools/install)。
 
-### 获取源码
+注意仓库内包含全部立绘，`git clone` 约 226 MB。
 
 ```bash
 git clone https://github.com/youyoEulgo/mikuji.git
 cd mikuji
-```
 
-### 编译运行（临时使用）
-
-```bash
+# 临时运行（自动使用当前目录的 assets/ 作为数据目录）
 cargo run --bin mikuji
-```
 
-### 编译安装
-
-```bash
-# 编译
-cargo build --release
-
-# 将编译好的二进制文件放进 $PATH 环境变量可达的目录
+# 编译安装
+cargo build --release --bin mikuji
 cp target/release/mikuji ~/.local/bin/
 
-# 数据部署
-# 安装后需将签池数据和图片放到数据目录。
-# 创建数据目录
+# 手动部署数据
 mkdir -p ~/.local/share/mikuji/images
-
-# 从源码目录复制数据
 cp assets/data.json ~/.local/share/mikuji/
 cp assets/images/*.png ~/.local/share/mikuji/images/
-
-# 直接运行
-mikuji
 ```
+
+开发时在仓库根目录运行会自动回退到 `assets/`，无需部署数据。
+
+### 数据目录
 
 程序运行时会自动查找数据目录，优先级如下：
 
@@ -66,10 +116,11 @@ mikuji
 
 ```
 ~/.local/share/mikuji/
-├── data.json       ← 签池数据
-├── user_seed.txt   ← 用户种子（首次运行自动生成）
-├── config.toml     ← 配置文件（可选）
-└── images/         ← 角色立绘（PNG）
+├── data.json                ← 签池数据（必需）
+├── user_seed.txt            ← 用户种子（首次运行自动生成）
+├── config.toml              ← 配置文件（可选）
+├── .mikuji_data_version     ← 安装脚本写入的数据版本标记（升级时用）
+└── images/                  ← 角色立绘（PNG，可选）
 ```
 
 ## 终端兼容性

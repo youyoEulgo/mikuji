@@ -18,3 +18,8 @@ rand = "0.8"
 base64 = "0.22"
 crossterm = "0.28"
 libc = "0.2"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
