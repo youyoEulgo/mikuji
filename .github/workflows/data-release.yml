@@ -79,8 +79,16 @@ jobs:
           tar -czf "${name}.tar.gz" -C package "${name}"
           # 纯文字安装（install.sh --no-images）只下这个约 292 KB 的资产。
           cp assets/data.json "${name}.json"
+          # 不要写 `tar -t | head`：head 提前关闭管道会让 tar 报 write error，
+          # 在 set -o pipefail 下直接判失败。先把清单落盘，再截前几行。
+          tar -tzf "${name}.tar.gz" >tar-list.txt
+          entries=$(grep -c '/images/.*\.png$' tar-list.txt || true)
+          grep -q '/data.json$' tar-list.txt
+          [ "$entries" -eq "$count" ]
+          printf '归档校验: data.json + %s 张立绘\n' "$entries"
+          sed -n '1,3p' tar-list.txt
+          rm -f tar-list.txt
           sha256sum "${name}.tar.gz" "${name}.json" >checksums.txt
-          tar -tzf "${name}.tar.gz" | head -5
           ls -lh "${name}.tar.gz" "${name}.json" checksums.txt
 
       - name: Create data release

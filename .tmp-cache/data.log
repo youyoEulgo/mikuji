@@ -1,0 +1,235 @@
+Package data	Set up job	﻿2026-09-11T21:28:08.4412297Z Current runner version: '2.337.0'
+Package data	Set up job	2026-09-11T21:28:08.4429296Z ##[group]Runner Image Provisioner
+Package data	Set up job	2026-09-11T21:28:08.4430211Z Hosted Compute Agent
+Package data	Set up job	2026-09-11T21:28:08.4430668Z Version: 20260828.587
+Package data	Set up job	2026-09-11T21:28:08.4431152Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+Package data	Set up job	2026-09-11T21:28:08.4431646Z Build Date: 2026-08-28T16:44:25Z
+Package data	Set up job	2026-09-11T21:28:08.4432102Z Worker ID: {20cc6205-3287-4dc0-90d4-11a460630527}
+Package data	Set up job	2026-09-11T21:28:08.4432625Z Azure Region: centralus
+Package data	Set up job	2026-09-11T21:28:08.4433026Z ##[endgroup]
+Package data	Set up job	2026-09-11T21:28:08.4433911Z ##[group]Operating System
+Package data	Set up job	2026-09-11T21:28:08.4434304Z Ubuntu
+Package data	Set up job	2026-09-11T21:28:08.4434712Z 24.04.5
+Package data	Set up job	2026-09-11T21:28:08.4435091Z LTS
+Package data	Set up job	2026-09-11T21:28:08.4435438Z ##[endgroup]
+Package data	Set up job	2026-09-11T21:28:08.4435870Z ##[group]Runner Image
+Package data	Set up job	2026-09-11T21:28:08.4436256Z Image: ubuntu-24.04
+Package data	Set up job	2026-09-11T21:28:08.4436653Z Version: 20260907.300.1
+Package data	Set up job	2026-09-11T21:28:08.4437359Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260907.300/images/ubuntu/Ubuntu2404-Readme.md
+Package data	Set up job	2026-09-11T21:28:08.4438587Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260907.300
+Package data	Set up job	2026-09-11T21:28:08.4439200Z ##[endgroup]
+Package data	Set up job	2026-09-11T21:28:08.4440461Z ##[group]GITHUB_TOKEN Permissions
+Package data	Set up job	2026-09-11T21:28:08.4441962Z Contents: write
+Package data	Set up job	2026-09-11T21:28:08.4442397Z Metadata: read
+Package data	Set up job	2026-09-11T21:28:08.4442766Z ##[endgroup]
+Package data	Set up job	2026-09-11T21:28:08.4444303Z Secret source: Actions
+Package data	Set up job	2026-09-11T21:28:08.4444952Z Cache mode: write
+Package data	Set up job	2026-09-11T21:28:08.4445430Z Prepare workflow directory
+Package data	Set up job	2026-09-11T21:28:08.4728510Z Prepare all required actions
+Package data	Set up job	2026-09-11T21:28:08.4766168Z Getting action download info
+Package data	Set up job	2026-09-11T21:28:08.6926420Z Download action repository 'actions/checkout@v7' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+Package data	Set up job	2026-09-11T21:28:08.9379908Z Download action repository 'softprops/action-gh-release@v3' (SHA:efb35369e0ad2afab669f228072c1b0d510eae64)
+Package data	Set up job	2026-09-11T21:28:09.2827568Z Complete job name: Package data
+Package data	Run actions/checkout@v7	﻿2026-09-11T21:28:09.3318123Z ##[group]Run actions/checkout@v7
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3318977Z with:
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3319331Z   repository: youyoEulgo/mikuji
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3322064Z   token: ***
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3322427Z   ssh-strict: true
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3322800Z   ssh-user: git
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3323167Z   persist-credentials: true
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3323551Z   clean: true
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3323894Z   sparse-checkout-cone-mode: true
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3324326Z   fetch-depth: 1
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3324684Z   fetch-tags: false
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3325083Z   show-progress: true
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3325440Z   lfs: false
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3325761Z   submodules: false
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3326138Z   set-safe-directory: true
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3326553Z   allow-unsafe-pr-checkout: false
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3327068Z env:
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3327404Z   COPYFILE_DISABLE: 1
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.3327810Z ##[endgroup]
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.4094744Z Syncing repository: youyoEulgo/mikuji
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.4096833Z ##[group]Getting Git version info
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.4097719Z Working directory is '/home/runner/work/mikuji/mikuji'
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.4098925Z [command]/usr/bin/git version
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.6690977Z git version 2.55.0
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.6706056Z ##[endgroup]
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.6714499Z Temporarily overriding HOME='/home/runner/work/_temp/57761b1e-99eb-4272-8ed1-307560010320' before making global git config changes
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.6715543Z Adding repository directory to the temporary git global config as a safe directory
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.6720155Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/mikuji/mikuji
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.6762560Z Deleting the contents of '/home/runner/work/mikuji/mikuji'
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.6769155Z ##[group]Determining repository object format
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.6770359Z ##[endgroup]
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.6771238Z ##[group]Initializing the repository
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.6771923Z [command]/usr/bin/git init /home/runner/work/mikuji/mikuji
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8861614Z hint: Using 'master' as the name for the initial branch. This default branch name
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8872024Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8873284Z hint: to use in all of your new repositories, which will suppress this warning,
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8874083Z hint: call:
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8874610Z hint:
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8875180Z hint: 	git config --global init.defaultBranch <name>
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8875956Z hint:
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8877054Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8878283Z hint: 'development'. The just-created branch can be renamed via this command:
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8879174Z hint:
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8879983Z hint: 	git branch -m <name>
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8880716Z hint:
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8881824Z hint: Disable this message with "git config set advice.defaultBranchName false"
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8883144Z Initialized empty Git repository in /home/runner/work/mikuji/mikuji/.git/
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8885984Z [command]/usr/bin/git remote add origin https://github.com/youyoEulgo/mikuji
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8921195Z ##[endgroup]
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8922514Z ##[group]Disabling automatic garbage collection
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8923485Z [command]/usr/bin/git config --local gc.auto 0
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8951097Z ##[endgroup]
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8952177Z ##[group]Setting up auth
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8952949Z Removing SSH command configuration
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8954273Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Package data	Run actions/checkout@v7	2026-09-11T21:28:09.8980038Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1071228Z Removing HTTP extra header
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1076698Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1100819Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1246893Z Removing includeIf entries pointing to credentials config files
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1251075Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1280004Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1433044Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-1f9b2cd2-b14e-4188-b60e-b6fdaa535d94.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1460907Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/mikuji/mikuji/.git.path /home/runner/work/_temp/git-credentials-1f9b2cd2-b14e-4188-b60e-b6fdaa535d94.config
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1482374Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/mikuji/mikuji/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-1f9b2cd2-b14e-4188-b60e-b6fdaa535d94.config
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1506820Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-1f9b2cd2-b14e-4188-b60e-b6fdaa535d94.config
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1528017Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-1f9b2cd2-b14e-4188-b60e-b6fdaa535d94.config
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1547023Z ##[endgroup]
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1548929Z ##[group]Fetching the repository
+Package data	Run actions/checkout@v7	2026-09-11T21:28:10.1552117Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +refs/tags/data-v1:refs/tags/data-v1
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1342160Z From https://github.com/youyoEulgo/mikuji
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1343381Z  * [new tag]         data-v1    -> data-v1
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1355723Z [command]/usr/bin/git tag --list data-v1
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1383164Z data-v1
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1388839Z [command]/usr/bin/git rev-parse refs/tags/data-v1^{commit}
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1407605Z 4321a605553dea3742d80c12b7e9af0369944b1a
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1409734Z ##[endgroup]
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1410277Z ##[group]Determining the checkout info
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1411060Z ##[endgroup]
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1414705Z [command]/usr/bin/git sparse-checkout disable
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1646035Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1669731Z ##[group]Checking out the ref
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.1674177Z [command]/usr/bin/git checkout --progress --force refs/tags/data-v1
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9188553Z Note: switching to 'refs/tags/data-v1'.
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9200150Z 
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9202508Z You are in 'detached HEAD' state. You can look around, make experimental
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9203046Z changes and commit them, and you can discard any commits you make in this
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9203639Z state without impacting any branches by switching back to a branch.
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9204006Z 
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9204227Z If you want to create a new branch to retain commits you create, you may
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9204740Z do so (now or later) by using -c with the switch command. Example:
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9205040Z 
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9205223Z   git switch -c <new-branch-name>
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9205407Z 
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9205568Z Or undo this operation with:
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9205736Z 
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9206407Z   git switch -
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9206610Z 
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9206792Z Turn off this advice by setting config variable advice.detachedHead to false
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9207098Z 
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9207231Z HEAD is now at 4321a60 release: bump version to 0.5.1
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9218510Z ##[endgroup]
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9256556Z [command]/usr/bin/git log -1 --format=%H
+Package data	Run actions/checkout@v7	2026-09-11T21:28:15.9276498Z 4321a605553dea3742d80c12b7e9af0369944b1a
+Package data	Resolve tag	﻿2026-09-11T21:28:15.9429610Z ##[group]Run set -euo pipefail
+Package data	Resolve tag	2026-09-11T21:28:15.9430115Z ^[[36;1mset -euo pipefail^[[0m
+Package data	Resolve tag	2026-09-11T21:28:15.9430399Z ^[[36;1mtag="${DATA_TAG:-${GITHUB_REF_NAME}}"^[[0m
+Package data	Resolve tag	2026-09-11T21:28:15.9430880Z ^[[36;1mcase "$tag" in^[[0m
+Package data	Resolve tag	2026-09-11T21:28:15.9431106Z ^[[36;1m  data-*) ;;^[[0m
+Package data	Resolve tag	2026-09-11T21:28:15.9431333Z ^[[36;1m  *)^[[0m
+Package data	Resolve tag	2026-09-11T21:28:15.9431593Z ^[[36;1m    echo "数据 tag 必须以 data- 开头，收到: $tag" >&2^[[0m
+Package data	Resolve tag	2026-09-11T21:28:15.9431889Z ^[[36;1m    exit 1^[[0m
+Package data	Resolve tag	2026-09-11T21:28:15.9432119Z ^[[36;1m    ;;^[[0m
+Package data	Resolve tag	2026-09-11T21:28:15.9432316Z ^[[36;1mesac^[[0m
+Package data	Resolve tag	2026-09-11T21:28:15.9432598Z ^[[36;1m# install.sh 用 ${BASE_URL}/${tag}/mikuji-${tag}.tar.gz 取数据包。^[[0m
+Package data	Resolve tag	2026-09-11T21:28:15.9432910Z ^[[36;1mecho "tag=${tag}" >>"$GITHUB_OUTPUT"^[[0m
+Package data	Resolve tag	2026-09-11T21:28:15.9433180Z ^[[36;1mecho "name=mikuji-${tag}" >>"$GITHUB_OUTPUT"^[[0m
+Package data	Resolve tag	2026-09-11T21:28:15.9457306Z shell: /usr/bin/bash -e {0}
+Package data	Resolve tag	2026-09-11T21:28:15.9457657Z env:
+Package data	Resolve tag	2026-09-11T21:28:15.9457878Z   COPYFILE_DISABLE: 1
+Package data	Resolve tag	2026-09-11T21:28:15.9458113Z   DATA_TAG: 
+Package data	Resolve tag	2026-09-11T21:28:15.9458369Z ##[endgroup]
+Package data	Sanity check the pool	﻿2026-09-11T21:28:16.0778640Z ##[group]Run set -euo pipefail
+Package data	Sanity check the pool	2026-09-11T21:28:16.0778960Z ^[[36;1mset -euo pipefail^[[0m
+Package data	Sanity check the pool	2026-09-11T21:28:16.0779202Z ^[[36;1mpython3 - <<'PY'^[[0m
+Package data	Sanity check the pool	2026-09-11T21:28:16.0779628Z ^[[36;1mimport json^[[0m
+Package data	Sanity check the pool	2026-09-11T21:28:16.0779854Z ^[[36;1m^[[0m
+Package data	Sanity check the pool	2026-09-11T21:28:16.0780148Z ^[[36;1mentries = json.load(open("assets/data.json"))^[[0m
+Package data	Sanity check the pool	2026-09-11T21:28:16.0780430Z ^[[36;1mif not entries:^[[0m
+Package data	Sanity check the pool	2026-09-11T21:28:16.0780698Z ^[[36;1m    raise SystemExit("assets/data.json 为空")^[[0m
+Package data	Sanity check the pool	2026-09-11T21:28:16.0780960Z ^[[36;1mprint(f"签池条数: {len(entries)}")^[[0m
+Package data	Sanity check the pool	2026-09-11T21:28:16.0781205Z ^[[36;1mPY^[[0m
+Package data	Sanity check the pool	2026-09-11T21:28:16.0781551Z ^[[36;1mcount=$(find assets/images -maxdepth 1 -type f -name '*.png' ! -name '._*' | wc -l)^[[0m
+Package data	Sanity check the pool	2026-09-11T21:28:16.0781911Z ^[[36;1mprintf '立绘数量: %s\n' "$count"^[[0m
+Package data	Sanity check the pool	2026-09-11T21:28:16.0782149Z ^[[36;1m[ "$count" -gt 0 ]^[[0m
+Package data	Sanity check the pool	2026-09-11T21:28:16.0801948Z shell: /usr/bin/bash -e {0}
+Package data	Sanity check the pool	2026-09-11T21:28:16.0802260Z env:
+Package data	Sanity check the pool	2026-09-11T21:28:16.0802672Z   COPYFILE_DISABLE: 1
+Package data	Sanity check the pool	2026-09-11T21:28:16.0803127Z ##[endgroup]
+Package data	Sanity check the pool	2026-09-11T21:28:16.0987825Z 签池条数: 128
+Package data	Sanity check the pool	2026-09-11T21:28:16.1044308Z 立绘数量: 128
+Package data	Package the data	﻿2026-09-11T21:28:16.1211541Z ##[group]Run set -euo pipefail
+Package data	Package the data	2026-09-11T21:28:16.1211917Z ^[[36;1mset -euo pipefail^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1212164Z ^[[36;1mname='mikuji-data-v1'^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1212442Z ^[[36;1mmkdir -p "package/${name}/images"^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1212750Z ^[[36;1mcp assets/data.json "package/${name}/data.json"^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1213050Z ^[[36;1m# PNG 已压缩，这里只做归档；同时排除 macOS 元数据文件。^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1213435Z ^[[36;1mfind assets/images -maxdepth 1 -type f -name '*.png' ! -name '._*' \^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1213841Z ^[[36;1m  -exec cp {} "package/${name}/images/" \;^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1214205Z ^[[36;1mcount=$(find "package/${name}/images" -type f | wc -l)^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1214544Z ^[[36;1m[ "$count" -gt 0 ] || { echo "没有可用立绘" >&2; exit 1; }^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1214827Z ^[[36;1mprintf '打包立绘: %s 张\n' "$count"^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1215169Z ^[[36;1mtar -czf "${name}.tar.gz" -C package "${name}"^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1215545Z ^[[36;1m# 纯文字安装（install.sh --no-images）只下这个约 292 KB 的资产。^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1215943Z ^[[36;1mcp assets/data.json "${name}.json"^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1216252Z ^[[36;1msha256sum "${name}.tar.gz" "${name}.json" >checksums.txt^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1216587Z ^[[36;1mtar -tzf "${name}.tar.gz" | head -5^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1216899Z ^[[36;1mls -lh "${name}.tar.gz" "${name}.json" checksums.txt^[[0m
+Package data	Package the data	2026-09-11T21:28:16.1233723Z shell: /usr/bin/bash -e {0}
+Package data	Package the data	2026-09-11T21:28:16.1233991Z env:
+Package data	Package the data	2026-09-11T21:28:16.1234237Z   COPYFILE_DISABLE: 1
+Package data	Package the data	2026-09-11T21:28:16.1234498Z ##[endgroup]
+Package data	Package the data	2026-09-11T21:28:16.3109764Z 打包立绘: 128 张
+Package data	Package the data	2026-09-11T21:28:21.9925233Z mikuji-data-v1/
+Package data	Package the data	2026-09-11T21:28:21.9925649Z mikuji-data-v1/data.json
+Package data	Package the data	2026-09-11T21:28:21.9925947Z mikuji-data-v1/images/
+Package data	Package the data	2026-09-11T21:28:21.9926513Z mikuji-data-v1/images/尔子田里乃.png
+Package data	Package the data	2026-09-11T21:28:21.9926825Z mikuji-data-v1/images/今泉影狼.png
+Package data	Package the data	2026-09-11T21:28:23.2972474Z tar: stdout: write error
+Package data	Package the data	2026-09-11T21:28:23.2989140Z ##[error]Process completed with exit code 2.
+Package data	Post Run actions/checkout@v7	﻿2026-09-11T21:28:23.3105213Z Post job cleanup.
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.3748917Z [command]/usr/bin/git version
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.3768027Z git version 2.55.0
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.3799867Z Temporarily overriding HOME='/home/runner/work/_temp/ae0def88-a3d8-4a88-81d2-f9282a67c5a7' before making global git config changes
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.3800910Z Adding repository directory to the temporary git global config as a safe directory
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.3803867Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/mikuji/mikuji
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.3827389Z Removing SSH command configuration
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.3832834Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.3857471Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4019067Z Removing HTTP extra header
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4023463Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4044882Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4201932Z Removing includeIf entries pointing to credentials config files
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4204646Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4226987Z includeif.gitdir:/home/runner/work/mikuji/mikuji/.git.path
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4227619Z includeif.gitdir:/home/runner/work/mikuji/mikuji/.git/worktrees/*.path
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4228271Z includeif.gitdir:/github/workspace/.git.path
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4228838Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4233381Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/mikuji/mikuji/.git.path
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4248322Z /home/runner/work/_temp/git-credentials-1f9b2cd2-b14e-4188-b60e-b6fdaa535d94.config
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4255459Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/mikuji/mikuji/.git.path \/home\/runner\/work\/_temp\/git\-credentials\-1f9b2cd2\-b14e\-4188\-b60e\-b6fdaa535d94\.config
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4277967Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/mikuji/mikuji/.git/worktrees/*.path
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4291962Z /home/runner/work/_temp/git-credentials-1f9b2cd2-b14e-4188-b60e-b6fdaa535d94.config
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4304187Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/mikuji/mikuji/.git/worktrees/*.path \/home\/runner\/work\/_temp\/git\-credentials\-1f9b2cd2\-b14e\-4188\-b60e\-b6fdaa535d94\.config
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4328982Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4347208Z /github/runner_temp/git-credentials-1f9b2cd2-b14e-4188-b60e-b6fdaa535d94.config
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.4352337Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-1f9b2cd2\-b14e\-4188\-b60e\-b6fdaa535d94\.config
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.5670180Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.5692548Z /github/runner_temp/git-credentials-1f9b2cd2-b14e-4188-b60e-b6fdaa535d94.config
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.5698565Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-1f9b2cd2\-b14e\-4188\-b60e\-b6fdaa535d94\.config
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.5724725Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Package data	Post Run actions/checkout@v7	2026-09-11T21:28:23.5874072Z Removing credentials config '/home/runner/work/_temp/git-credentials-1f9b2cd2-b14e-4188-b60e-b6fdaa535d94.config'
+Package data	Complete job	﻿2026-09-11T21:28:23.5988855Z Cleaning up orphan processes
