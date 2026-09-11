@@ -131,6 +131,8 @@ v0.5.0 及更早的资产名是 `mikuji-vX.Y.Z-x86_64-linux.tar.gz` / `-arm64-ma
   完全无法访问 GitHub 时需同时用 `MIKUJI_VERSION` 固定版本。
 - **`--from-source` 代价高**：`cargo install --git` 会 clone 含 224 MB 立绘的仓库。
 - **未启用 fmt/clippy 门禁**：当前代码存在 `cargo fmt --check` 差异与 clippy 告警，
-  清理后可加入 CI（`ci.yml` 里已留 ShellCheck 非门禁步骤）。
+  清理后可加入 CI；ShellCheck（`-S warning`）已作为门禁。
+- **脚本按 POSIX sh 编写**，CI 上 `/bin/sh` 是 dash。本机可用 `SH_BIN` 复现：
+  `SH_BIN=/path/to/sh sh scripts/install_test.sh`（busybox ash 也可）。
 - **数据 tag 操作顺序**：首次发布须先推 `data-v1` 再宣布，否则新命名的二进制包会找不到数据；
   旧版整包回退路径不受影响。

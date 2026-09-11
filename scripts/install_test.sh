@@ -11,8 +11,10 @@
 #
 # 需要: python3（起本地 HTTP 服务）、tar、sha256sum 或 shasum。
 set -eu
+# 避免调用方的 CDPATH 影响下面用 cd 解析仓库根目录的结果。
+unset CDPATH || true
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(cd -- "$(dirname -- "$0")/.." && pwd)
 INSTALLER=${1:-"$ROOT/scripts/install.sh"}
 BIN_SRC=""
 for candidate in "$ROOT/target/release/mikuji" "$ROOT/target/debug/mikuji"; do
@@ -221,7 +223,7 @@ write_checksums() { # 版本
 
 echo "==> 构造假 release（target=${TARGET}）"
 make_bin_package "$REAL_VERSION" "$SERVE/$V_GOOD/mikuji-$V_GOOD-${TARGET}.tar.gz"
-write_checksums $V_GOOD
+write_checksums "$V_GOOD"
 make_data_package v9 "$SERVE/data-v9/mikuji-data-v9.tar.gz"
 cp "$ROOT/assets/data.json" "$SERVE/data-v9/mikuji-data-v9.json"
 write_checksums data-v9
@@ -257,7 +259,7 @@ echo "    ${BASE}"
 
 # ── 场景 1：默认目录 + 纯文字安装 ────────────────────────────────────────────
 echo "==> 场景 1: 默认目录 + --no-images"
-run "$INSTALLER" --version $V_GOOD --data-version data-v9 --no-images
+run "$INSTALLER" --version "$V_GOOD" --data-version data-v9 --no-images
 assert_status "退出码为 0" "$status" 0
 assert_file "二进制落在 ~/.local/bin" "$HOME_T/.local/bin/mikuji"
 assert_file "data.json 落在 ~/.local/share/mikuji" "$HOME_T/.local/share/mikuji/data.json"
@@ -271,21 +273,21 @@ assert_eq "纯文字安装只取 data.json 资产" "$(request_count "mikuji-data
 # ── 场景 2：幂等（不应重新下载）──────────────────────────────────────────────
 echo "==> 场景 2: 重复执行为幂等"
 before=$(request_count "mikuji-$V_GOOD-")
-run "$INSTALLER" --version $V_GOOD --data-version data-v9 --no-images
+run "$INSTALLER" --version "$V_GOOD" --data-version data-v9 --no-images
 assert_status "退出码为 0" "$status" 0
 assert_contains "提示已是最新" "$OUT" "已是最新"
 assert_eq "没有重新下载二进制" "$(request_count "mikuji-$V_GOOD-")" "$before"
 
 # ── 场景 3：--force 强制重装 ─────────────────────────────────────────────────
 echo "==> 场景 3: --force"
-run "$INSTALLER" --version $V_GOOD --data-version data-v9 --no-images --force
+run "$INSTALLER" --version "$V_GOOD" --data-version data-v9 --no-images --force
 assert_status "退出码为 0" "$status" 0
 assert_contains "重新下载并校验" "$OUT" "校验通过: mikuji-$V_GOOD-${TARGET}.tar.gz"
 
 # ── 场景 4：全量安装（含立绘、过滤 macOS 元数据）────────────────────────────
 echo "==> 场景 4: 全量安装 + 立绘过滤"
 DATA_T4="$WORK/data4"
-run "$INSTALLER" --version $V_GOOD --data-version data-v9 \
+run "$INSTALLER" --version "$V_GOOD" --data-version data-v9 \
   --install-dir "$WORK/bin4" --data-dir "$DATA_T4"
 assert_status "退出码为 0" "$status" 0
 assert_eq "标记为完整数据" "$(cat "$DATA_T4/.mikuji_data_version" 2>/dev/null || true)" "data-v9"
@@ -298,7 +300,7 @@ assert_contains "自定义数据目录给出提示" "$OUT" "MIKUJI_DATA_DIR"
 # ── 场景 4b：纯文字 → 完整安装（由数据版本标记驱动）─────────────────────────
 echo "==> 场景 4b: 纯文字安装后补装立绘"
 before_tar=$(request_count "mikuji-data-v9.tar.gz")
-run "$INSTALLER" --version $V_GOOD --data-version data-v9
+run "$INSTALLER" --version "$V_GOOD" --data-version data-v9
 assert_status "退出码为 0" "$status" 0
 assert_eq "标记升级为完整数据" \
   "$(cat "$HOME_T/.local/share/mikuji/.mikuji_data_version" 2>/dev/null || true)" "data-v9"
@@ -315,17 +317,17 @@ assert_no_file "校验失败时不落盘二进制" "$WORK/bin5/mikuji"
 
 # ── 场景 6：数据包缺失 ───────────────────────────────────────────────────────
 echo "==> 场景 6: 数据包缺失 / --skip-data"
-run "$INSTALLER" --version $V_GOOD --data-version data-nope \
+run "$INSTALLER" --version "$V_GOOD" --data-version data-nope \
   --install-dir "$WORK/bin6" --data-dir "$WORK/data6"
 if [ "$status" -ne 0 ]; then ok "整包缺失时退出码非 0"; else bad "退出码应为非 0"; fi
 assert_contains "给出补救提示" "$OUT" "无法下载签池数据"
 assert_no_file "失败时不安装数据" "$WORK/data6/data.json"
-run "$INSTALLER" --version $V_GOOD --data-version data-nope --no-images \
+run "$INSTALLER" --version "$V_GOOD" --data-version data-nope --no-images \
   --install-dir "$WORK/bin6" --data-dir "$WORK/data6"
 if [ "$status" -ne 0 ]; then ok "纯文字数据缺失时退出码非 0"; else bad "退出码应为非 0"; fi
 assert_contains "纯文字路径也给出提示" "$OUT" "约 292 KB"
 assert_no_file "纯文字失败时也不落盘数据" "$WORK/data6/data.json"
-run "$INSTALLER" --version $V_GOOD --data-version data-nope --skip-data \
+run "$INSTALLER" --version "$V_GOOD" --data-version data-nope --skip-data \
   --install-dir "$WORK/bin6" --data-dir "$WORK/data6"
 assert_status "--skip-data 可以只装二进制" "$status" 0
 assert_file "二进制已安装" "$WORK/bin6/mikuji"
@@ -368,7 +370,7 @@ BASE="$GOOD_BASE"
 echo "==> 场景 9: 环境变量与 PATH 写入"
 NO_PATH_T=0
 # 通过导出而非 env 前缀传参，这样 SH_BIN（dash/ash）也能照常工作。
-export MIKUJI_VERSION=$V_GOOD MIKUJI_DATA_VERSION=data-v9 MIKUJI_NO_IMAGES=1
+export MIKUJI_VERSION="$V_GOOD" MIKUJI_DATA_VERSION=data-v9 MIKUJI_NO_IMAGES=1
 export MIKUJI_INSTALL_DIR="$WORK/bin9" MIKUJI_DATA_DIR="$WORK/data9"
 run "$INSTALLER"
 assert_status "用环境变量安装成功" "$status" 0

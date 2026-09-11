@@ -33,9 +33,8 @@ jobs:
           sh -n scripts/install.sh
           sh -n scripts/install_test.sh
 
-      - name: ShellCheck (informational)
-        continue-on-error: true
-        run: shellcheck -s sh scripts/install.sh scripts/install_test.sh
+      - name: ShellCheck
+        run: shellcheck -s sh -S warning scripts/install.sh scripts/install_test.sh
 
       # 用本地 HTTP 服务 + 伪造 release 覆盖安装器各分支，不访问 GitHub。
       - name: Installer self-test

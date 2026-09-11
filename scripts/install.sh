@@ -14,6 +14,8 @@
 # 安装/升级只覆盖 data.json 与 images/，永不触碰 user_seed.txt / config.toml。
 # ─────────────────────────────────────────────────────────────────────────────
 set -eu
+# 避免调用方的 CDPATH 影响下面用 cd 解析脚本目录的结果。
+unset CDPATH || true
 
 REPO="youyoEulgo/mikuji"
 REPO_URL="https://github.com/${REPO}.git"
@@ -599,7 +601,7 @@ log "签池数据 -> ${DATA_DIR} (${DATA_VERSION})"
 # 本地包探测：解压后的发布包内直接执行时使用本地文件。
 SCRIPT_DIR=""
 case "$0" in
-  */*) SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || SCRIPT_DIR="" ;;
+  */*) SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" 2>/dev/null && pwd) || SCRIPT_DIR="" ;;
   *)
     # curl | sh 时 $0 是 "sh"，此时当前目录里的同名文件不应被误认为本地包。
     if [ -f "$0" ]; then
@@ -618,7 +620,7 @@ if [ -n "$SCRIPT_DIR" ]; then
   if [ -f "${SCRIPT_DIR}/data.json" ]; then
     LOCAL_DATA="$SCRIPT_DIR"
   elif [ -f "${SCRIPT_DIR}/../assets/data.json" ]; then
-    LOCAL_DATA=$(CDPATH= cd -- "${SCRIPT_DIR}/../assets" && pwd)
+    LOCAL_DATA=$(cd -- "${SCRIPT_DIR}/../assets" && pwd)
   fi
 fi
 
